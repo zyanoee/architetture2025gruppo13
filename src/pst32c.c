@@ -345,7 +345,7 @@ VECTOR matrix_product(VECTOR v, MATRIX m){
 	return res;
 }
 
-float distance(float phi, float psi, float a_phi, float a_psi){
+float distance_angles(float phi, float psi, float a_phi, float a_psi){
 	return sqrt((phi-a_phi)*(phi-a_phi) + (psi-a_psi)*(psi-a_psi));
 }
 
@@ -428,6 +428,23 @@ MATRIX backbone(char* s, VECTOR phi, VECTOR psi){
 
 }
 
+MATRIX c_alpha_coords(MATRIX coords, int N){
+	MATRIX c_alpha_coords = alloc_matric(N,3);
+	for(int i=0; i<N; i++){
+		int inx = i*9;
+		c_alpha_coords[i] = coords[inx+3];
+		c_alpha_coords[i+1] = coords[inx+4];
+		c_alpha_coords[i+2] = coords[inx+5];
+	}
+	return c_alpha_coords;
+}
+
+float distance(int i, int j, MATRIX coords){
+	int real_i = i*3;
+	int real_j = j*3;
+	return sqrt((coords[real_i]-coords[real_j])*(coords[real_i]-coords[real_j]) + (coords[real_i+1]-coords[real_j+1])*(coords[real_i+1]-coords[real_j+1]) + (coords[real_i+2]-coords[real_j+2])*(coords[real_i+2]-coords[real_j+2]));
+}
+
 //ENERGIE
 float rama_energy(VECTOR phi, VECTOR psi, int N){
 	float alpha_phi = -57.8;
@@ -436,13 +453,77 @@ float rama_energy(VECTOR phi, VECTOR psi, int N){
 	float beta_psi = -113.0;
 	float energy = 0;
 	for (int i = 0; i<N; i++){
-		float a_dist = distance(phi[i], psi[i], alpha_phi, alpha_psi);
-		float b_dist = distance(phi[i], psi[i], beta_phi, beta_psi);
+		float a_dist = distance_angles(phi[i], psi[i], alpha_phi, alpha_psi);
+		float b_dist = distance_angles(phi[i], psi[i], beta_phi, beta_psi);
 		energy = energy + 0.5*min(a_dist, b_dist);
 	}
 	return energy;
-
 }
+
+float hydrophobic_energy(char* s, MATRIX c_alpha_coords, int N){
+	float energy = 0;
+	for(int i = 0; i<N; i++){
+		for(int j = i+1; j<N; j++ ){
+			float dist = distance(i,j, c_alpha_coords);
+			if( dist < 10.0){
+				energy = energy + hydrophobicity[s[i]-'A']*hydrophobicity[s[j]-'A']]/dist;
+			}
+		}
+	}
+
+	return energy;
+}
+
+float electrostatic_energy(char* s, MATRIX c_alpha_coords, int N){
+	float energy = 0;
+	for(int i = 0; i<N; i++){
+		for(int j = i+1; j<N; j++ ){
+			float dist = distance(i,j, c_alpha_coords);
+			if( dist < 10.0 && charge[s[i]-'A'] != 0 && charge[s[j]-'A'] != 0){
+				energy = energy + charge[s[i]-'A']*charge[s[j]-'A']]/(dist*4);
+			}
+		}
+	}
+
+	return energy;
+}
+
+float packing_energy(char* s, MATRIX c_alpha_coords, int N){
+	float energy = 0;
+	for(int i = 0; i<N; i++){
+		float density = 0;
+		for(int j = 0; j<N; j++ ){
+			float dist = distance(i,j, c_alpha_coords);
+			if(i!=j && dist < 10.0){
+				density = density + volume[s[j]-'A']/(dist*dist*dist);
+			}
+			energy = energy + (volume[s[i]-'A']-density)*(volume[s[i]-'A']-density);
+		}
+	}
+
+	return energy;
+}
+
+float energy(s, VECTOR phi, VECTOR psi){
+	int N = (int)strlen(s);
+	MATRIX coords = backbone(s, phi, psi);
+	MATRIX c_alpha_coords = c_alpha_coords(coords, N);
+	float rama = rama_energy(phi, psi, N);
+	float hydrophobic = hydrophobic_energy(s, c_alpha_coords, N);
+	float electrostatic = electrostatic_energy(s, c_alpha_coords, N);
+	float packing = packing_energy(s, c_alpha_coords, N);
+
+	float w_rama = 1.0;
+	float w_hydrophobic = 0.5;
+	float w_electrostatic = 0.2;
+	float w_packing = 0.3;
+
+	dealloc_matrix(coords);
+	dealloc_matrix(c_alpha_coords);
+
+	return w_rama*rama + w_hydrophobic*hydrophobic + w_electrostatic*electrostatic + w_packing*packing;
+}
+
 
 
 
