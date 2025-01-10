@@ -545,6 +545,7 @@ float energy(char* s, int N, VECTOR phi, VECTOR psi){
 	return w_rama*rama + w_hydrophobic*hydrophobic + w_electrostatic*electrostatic + w_packing*packing;
 }
 
+<<<<<<< HEAD
 void simulated_annealing(char* s, int N, VECTOR phi, VECTOR psi, float T0, float alpha, float k){
 
 	float E = energy(s,N,phi,psi);
@@ -582,7 +583,46 @@ void simulated_annealing(char* s, int N, VECTOR phi, VECTOR psi, float T0, float
 	return;
 }
 
+=======
+MATRIX simulated_annealing(char* s, float T0, float alpha, float k){
+	int N = (int)strlen(s);
+	MATRIX vectors = alloc_matrix(N,2);
+	VECTOR phi = vectors[0];
+	VECTOR psi = vectors[1];
+>>>>>>> 4c90b147d7d8032a37eca6d0635cfac6cf1cd1e7
 
+	for(int i=0; i < N; i++){
+		phi[i] = ((float)rand()/RAND_MAX)* 2 * M_PI - M_PI;
+		psi[i] = ((float)rand()/RAND_MAX)* 2 * M_PI - M_PI;
+	}
+	float E = energy(s,phi,psi);
+	float T = T0;
+	int t = 0;
+
+	while (T>0){
+		int i = rand() % N;
+		float dphi = ((float)rand()/RAND_MAX)* 2 * M_PI - M_PI;
+		float dpsi = ((float)rand()/RAND_MAX)* 2 * M_PI - M_PI;
+		phi[i]+= dphi;
+		psi[i]+= dpsi;
+
+		float deltaE = energy(s,phi,psi) - E;
+
+		if(deltaE<= 0){
+			E = energy(s,phi,psi)
+		}else{
+			float P = exp(-deltaE/(k*T));
+			if(((float)(rand() / RAND_MAX))<= P){
+				E = energy(s,phi,psi);
+			}else{
+				phi-=dphi;
+				psi-=dpsi;
+			}
+		}
+		t++;
+		T = T0 - sqrt(alpha*t);
+	}
+}return vectors;
 
 
 
