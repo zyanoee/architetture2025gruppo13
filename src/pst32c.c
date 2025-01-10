@@ -106,6 +106,10 @@ MATRIX alloc_matrix(int rows, int cols) {
 	return (MATRIX) get_block(sizeof(type),rows*cols);
 }
 
+VECTOR alloc_vector(int n) {
+	return (VECTOR) get_block(sizeof(type),n);
+}
+
 int* alloc_int_matrix(int rows, int cols) {
 	return (int*) get_block(sizeof(int),rows*cols);
 }
@@ -117,6 +121,12 @@ char* alloc_char_matrix(int rows, int cols) {
 void dealloc_matrix(void* mat) {
 	free_block(mat);
 }
+
+void dealloc_vector(void* mat) {
+	free_block(mat);
+}
+
+
 
 /*
 * 
@@ -284,7 +294,7 @@ extern void prova(params* input);
 
 // PROCEDURE IN C
 	//TRIGONOMETRICHE
-float cos(float theta){
+float cosine(float theta){
 	float t0 = 1;
 	float t1 = -theta*theta / 2;
 	float t2 = theta*theta*theta*theta / 24; //fact(4)
@@ -292,7 +302,7 @@ float cos(float theta){
 
 	return t0 + t1 + t2 + t3;
 }
-float sin(float theta){
+float sine(float theta){
 	float t0 = theta;
 	float t1 = -theta*theta*theta / 6; //fact(3)
 	float t2 = theta*theta*theta*theta*theta / 120; //fact(5)
@@ -314,12 +324,16 @@ void normalize_vector(VECTOR axis){
 MATRIX rotation(VECTOR axis, float theta){
 	MATRIX R = alloc_matrix(3,3);
 
-	normalize_vector(axis); //normalizzazione dell'asse
+	normalize_vector(axis);
+	float scalar_prod = axis[0]*axis[0] + axis[1]*axis[1] + axis[2]*axis[2];
+	axis[0] = axis[0]/scalar_prod;
+	axis[1] = axis[1]/scalar_prod;
+	axis[2] = axis[2]/scalar_prod;
 
-	float a = cos(theta/2);
-	float b = -1 * axis[0] * sin(theta/2);
-	float c = -1 * axis[1] * sin(theta/2);
-	float d = -1 * axis[2] * sin(theta/2);
+	float a = cosine(theta/2);
+	float b = -1 * axis[0] * sine(theta/2);
+	float c = -1 * axis[1] * sine(theta/2);
+	float d = -1 * axis[2] * sine(theta/2);
 
 	R[0] = a*a + b*b - c*c - d*d;
 	R[1] = 2*b*c + 2*a*d;
@@ -346,7 +360,7 @@ VECTOR matrix_product(VECTOR v, MATRIX m){
 }
 
 float distance_angles(float phi, float psi, float a_phi, float a_psi){
-	return sqrt((phi-a_phi)*(phi-a_phi) + (psi-a_psi)*(psi-a_psi));
+	return sqrt(pow(phi-a_phi, 2) + pow(psi-a_psi, 2));
 }
 
 float min(float a, float b){
@@ -387,6 +401,7 @@ MATRIX backbone(char* s, VECTOR phi, VECTOR psi){
 			tmp[0] = coords[3*(idx-1)] - coords[3*(idx-2)];
 			tmp[1] = coords[3*(idx-1)+1] - coords[3*(idx-2)+1];
 			tmp[2] = coords[3*(idx-1)+2] - coords[3*(idx-2)+2];
+			
 			R = rotation(tmp, angle_cnca);
 			tmp[0] = 0;
 			tmp[1]= dist[2];
@@ -418,23 +433,26 @@ MATRIX backbone(char* s, VECTOR phi, VECTOR psi){
 		tmp[0] = 0;
 		tmp[1]= dist[1];
 		tmp[0]= 0;
+		neww = matrix_product(tmp, R);
 		coords[3*(idx+2)]=coords[3*(idx+1)]+neww[0];
 		coords[3*(idx+2)+1]=coords[3*(idx+1)+1]+neww[1];
 		coords[3*(idx+2)+2]=coords[3*(idx+1)+2]+neww[2];
 
 	}
 	dealloc_vector(tmp);
+	dealloc_vector(dist);
 	return coords;
 
 }
 
 MATRIX c_alpha_coords(MATRIX coords, int N){
-	MATRIX c_alpha_coords = alloc_matric(N,3);
+	MATRIX c_alpha_coords = alloc_matrix(N,3);
 	for(int i=0; i<N; i++){
 		int inx = i*9;
-		c_alpha_coords[i] = coords[inx+3];
-		c_alpha_coords[i+1] = coords[inx+4];
-		c_alpha_coords[i+2] = coords[inx+5];
+		int idx = i*3;
+		c_alpha_coords[idx] = coords[inx+3];
+		c_alpha_coords[idx+1] = coords[inx+4];
+		c_alpha_coords[idx+2] = coords[inx+5];
 	}
 	return c_alpha_coords;
 }
@@ -442,7 +460,10 @@ MATRIX c_alpha_coords(MATRIX coords, int N){
 float distance(int i, int j, MATRIX coords){
 	int real_i = i*3;
 	int real_j = j*3;
-	return sqrt((coords[real_i]-coords[real_j])*(coords[real_i]-coords[real_j]) + (coords[real_i+1]-coords[real_j+1])*(coords[real_i+1]-coords[real_j+1]) + (coords[real_i+2]-coords[real_j+2])*(coords[real_i+2]-coords[real_j+2]));
+	return sqrt(pow(coords[real_j]-coords[real_i], 2) +
+				pow(coords[real_j+1]-coords[real_i+1], 2) +
+				pow(coords[real_j+2]-coords[real_i+2], 2)
+	);
 }
 
 //ENERGIE
@@ -450,7 +471,7 @@ float rama_energy(VECTOR phi, VECTOR psi, int N){
 	float alpha_phi = -57.8;
 	float alpha_psi = -47.0;
 	float beta_phi = -119.0;
-	float beta_psi = -113.0;
+	float beta_psi = 113.0;
 	float energy = 0;
 	for (int i = 0; i<N; i++){
 		float a_dist = distance_angles(phi[i], psi[i], alpha_phi, alpha_psi);
@@ -466,11 +487,10 @@ float hydrophobic_energy(char* s, MATRIX c_alpha_coords, int N){
 		for(int j = i+1; j<N; j++ ){
 			float dist = distance(i,j, c_alpha_coords);
 			if( dist < 10.0){
-				energy = energy + hydrophobicity[s[i]-'A']*hydrophobicity[s[j]-'A']]/dist;
+				energy = energy + (hydrophobicity[s[i]-'A']*hydrophobicity[s[j]-'A'])/dist;
 			}
 		}
 	}
-
 	return energy;
 }
 
@@ -480,11 +500,10 @@ float electrostatic_energy(char* s, MATRIX c_alpha_coords, int N){
 		for(int j = i+1; j<N; j++ ){
 			float dist = distance(i,j, c_alpha_coords);
 			if( dist < 10.0 && charge[s[i]-'A'] != 0 && charge[s[j]-'A'] != 0){
-				energy = energy + charge[s[i]-'A']*charge[s[j]-'A']]/(dist*4);
+				energy = energy + (charge[s[i]-'A']*charge[s[j]-'A'])/(dist*4);
 			}
 		}
 	}
-
 	return energy;
 }
 
@@ -494,34 +513,73 @@ float packing_energy(char* s, MATRIX c_alpha_coords, int N){
 		float density = 0;
 		for(int j = 0; j<N; j++ ){
 			float dist = distance(i,j, c_alpha_coords);
+			//printf("dist> %f\n",dist);
 			if(i!=j && dist < 10.0){
-				density = density + volume[s[j]-'A']/(dist*dist*dist);
+				float d = (volume[s[j]-'A']/(dist*dist*dist));
+				density = density + d;
 			}
-			energy = energy + (volume[s[i]-'A']-density)*(volume[s[i]-'A']-density);
 		}
+		float voldens = (volume[s[i]-'A']-density)*(volume[s[i]-'A']-density);
+		energy = energy + voldens;
 	}
-
 	return energy;
 }
 
-float energy(s, VECTOR phi, VECTOR psi){
-	int N = (int)strlen(s);
+float energy(char* s, int N, VECTOR phi, VECTOR psi){
 	MATRIX coords = backbone(s, phi, psi);
-	MATRIX c_alpha_coords = c_alpha_coords(coords, N);
-	float rama = rama_energy(phi, psi, N);
-	float hydrophobic = hydrophobic_energy(s, c_alpha_coords, N);
-	float electrostatic = electrostatic_energy(s, c_alpha_coords, N);
-	float packing = packing_energy(s, c_alpha_coords, N);
+	MATRIX c_alpha = c_alpha_coords(coords, N);
 
+	float rama = rama_energy(phi, psi, N);
+	float hydrophobic = hydrophobic_energy(s, c_alpha, N) ;
+	float electrostatic = electrostatic_energy(s, c_alpha, N);
+	float packing = packing_energy(s, c_alpha, N);
+	
 	float w_rama = 1.0;
 	float w_hydrophobic = 0.5;
 	float w_electrostatic = 0.2;
 	float w_packing = 0.3;
 
 	dealloc_matrix(coords);
-	dealloc_matrix(c_alpha_coords);
+	dealloc_matrix(c_alpha);
 
 	return w_rama*rama + w_hydrophobic*hydrophobic + w_electrostatic*electrostatic + w_packing*packing;
+}
+
+void simulated_annealing(char* s, int N, VECTOR phi, VECTOR psi, float T0, float alpha, float k){
+
+	float E = energy(s,N,phi,psi);
+	float T = T0;
+	int t = 0;
+
+	while (T>0){
+		int i = (int) (random()*N);
+		float dphi = (random()*2 * M_PI) - M_PI;
+		float dpsi = (random()*2 * M_PI) - M_PI;
+		phi[i]+= dphi;
+		psi[i]+= dpsi;
+
+
+		float new_energy = energy(s,N,phi,psi);
+		float deltaE = new_energy - E;
+		if(deltaE<= 0){
+			E = new_energy;
+		}else{
+
+			float sp = -deltaE/(k*T);
+			float P = exp(sp);
+			float r = random();
+			if(r<= P){
+				E = energy(s,N,phi,psi);
+			}else{
+				phi[i]-= dphi;
+				psi[i]-= dpsi;
+			}
+		}
+		t++;
+		T = T0 - sqrt(alpha*t);
+	}
+	printf("SA: Energia = %f\n", E);
+	return;
 }
 
 
@@ -529,9 +587,7 @@ float energy(s, VECTOR phi, VECTOR psi){
 
 
 void pst(params* input){
-	// --------------------------------------------------------------
-	// Codificare qui l'algoritmo di Predizione struttura terziaria
-	// --------------------------------------------------------------
+	simulated_annealing(input->seq, input->N, input->phi, input->psi, input->to,input->alpha, input->k);
 }
 
 int main(int argc, char** argv) {
