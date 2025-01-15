@@ -323,17 +323,19 @@ void normalize_vector(VECTOR axis){
 //ROTAZIONE
 MATRIX rotation(VECTOR axis, float theta){
 	MATRIX R = alloc_matrix(3,3);
-
 	normalize_vector(axis);
 	float scalar_prod = axis[0]*axis[0] + axis[1]*axis[1] + axis[2]*axis[2];
 	axis[0] = axis[0]/scalar_prod;
 	axis[1] = axis[1]/scalar_prod;
 	axis[2] = axis[2]/scalar_prod;
 
+
 	float a = cosine(theta/2);
-	float b = -1 * axis[0] * sine(theta/2);
-	float c = -1 * axis[1] * sine(theta/2);
-	float d = -1 * axis[2] * sine(theta/2);
+	float stheta = sine(theta/2);
+
+	float b = -1 * axis[0] * stheta;
+	float c = -1 * axis[1] * stheta;
+	float d = -1 * axis[2] * stheta;
 
 	R[0] = a*a + b*b - c*c - d*d;
 	R[1] = 2*b*c + 2*a*d;
@@ -346,15 +348,14 @@ MATRIX rotation(VECTOR axis, float theta){
 	R[6] = 2*b*d + 2*a*c;
 	R[7] = 2*c*d - 2*a*b;
 	R[8] = a*a + d*d - b*b - c*c;
-
 	return R;
 }
 
 VECTOR matrix_product(VECTOR v, MATRIX m){
 	VECTOR res = alloc_vector(3);
-	res[0] = v[0]*m[0] + v[1]*m[1] + v[2]*m[2];
-	res[1] = v[0]*m[3] + v[1]*m[4] + v[2]*m[5];
-	res[2] = v[0]*m[6] + v[1]*m[7] + v[2]*m[8];
+	res[0] = v[0]*m[0] + v[1]*m[3] + v[2]*m[6];
+	res[1] = v[0]*m[1] + v[1]*m[4] + v[2]*m[7];
+	res[2] = v[0]*m[2] + v[1]*m[5] + v[2]*m[8];
 
 	return res;
 }
@@ -373,10 +374,10 @@ MATRIX backbone(char* s, VECTOR phi, VECTOR psi){
 	int N = (int)strlen(s);
 	MATRIX coords = alloc_matrix(N*3,3);
 
-	VECTOR dist = alloc_vector(3); //distanze backbone (in Armstrong)
-	dist[0]=1.46; //rcan
-	dist[1]=1.52; //rcac
-	dist[2]=1.33; //rcn
+
+	float dist0=1.46; //rcan
+	float dist1=1.52; //rcac
+	float dist2=1.33; //rcn
 	
 	float angle_cnca = 2.124;
 
@@ -386,7 +387,7 @@ MATRIX backbone(char* s, VECTOR phi, VECTOR psi){
 	coords[2] = 0;
 
 	//Primo CA
-	coords[3] = dist[0];
+	coords[3] = dist0;
 	coords[4] = 0;
 	coords[5] = 0;
 
@@ -401,11 +402,10 @@ MATRIX backbone(char* s, VECTOR phi, VECTOR psi){
 			tmp[0] = coords[3*(idx-1)] - coords[3*(idx-2)];
 			tmp[1] = coords[3*(idx-1)+1] - coords[3*(idx-2)+1];
 			tmp[2] = coords[3*(idx-1)+2] - coords[3*(idx-2)+2];
-			
 			R = rotation(tmp, angle_cnca);
 			tmp[0] = 0;
-			tmp[1]= dist[2];
-			tmp[0]= 0;
+			tmp[1]= dist2;
+			tmp[2]= 0;
 			neww = matrix_product(tmp, R);
 			coords[idx*3]=coords[(idx-1)*3]+neww[0];
 			coords[idx*3+1]=coords[(idx-1)*3+1]+neww[1];
@@ -417,8 +417,8 @@ MATRIX backbone(char* s, VECTOR phi, VECTOR psi){
 			tmp[2] = coords[idx*3+2] - coords[3*(idx-1)+2];
 			R = rotation(tmp, phi[i]);
 			tmp[0] = 0;
-			tmp[1]= dist[0];
-			tmp[0]= 0;
+			tmp[1]= dist0;
+			tmp[2]= 0;
 			neww = matrix_product(tmp, R);
 			coords[3*(idx+1)]=coords[3*idx]+neww[0];
 			coords[3*(idx+1)+1]=coords[3*idx+1]+neww[1];
@@ -431,8 +431,8 @@ MATRIX backbone(char* s, VECTOR phi, VECTOR psi){
 		tmp[2] = coords[3*(idx+1)+2] - coords[3*(idx)+2];
 		R = rotation(tmp, psi[i]);
 		tmp[0] = 0;
-		tmp[1]= dist[1];
-		tmp[0]= 0;
+		tmp[1]= dist1;
+		tmp[2]= 0;
 		neww = matrix_product(tmp, R);
 		coords[3*(idx+2)]=coords[3*(idx+1)]+neww[0];
 		coords[3*(idx+2)+1]=coords[3*(idx+1)+1]+neww[1];
@@ -440,7 +440,7 @@ MATRIX backbone(char* s, VECTOR phi, VECTOR psi){
 
 	}
 	dealloc_vector(tmp);
-	dealloc_vector(dist);
+
 	return coords;
 
 }
@@ -454,6 +454,7 @@ MATRIX c_alpha_coords(MATRIX coords, int N){
 		c_alpha_coords[idx+1] = coords[inx+4];
 		c_alpha_coords[idx+2] = coords[inx+5];
 	}
+	
 	return c_alpha_coords;
 }
 
@@ -513,7 +514,6 @@ float packing_energy(char* s, MATRIX c_alpha_coords, int N){
 		float density = 0;
 		for(int j = 0; j<N; j++ ){
 			float dist = distance(i,j, c_alpha_coords);
-			//printf("dist> %f\n",dist);
 			if(i!=j && dist < 10.0){
 				float d = (volume[s[j]-'A']/(dist*dist*dist));
 				density = density + d;
@@ -533,7 +533,7 @@ float energy(char* s, int N, VECTOR phi, VECTOR psi){
 	float hydrophobic = hydrophobic_energy(s, c_alpha, N) ;
 	float electrostatic = electrostatic_energy(s, c_alpha, N);
 	float packing = packing_energy(s, c_alpha, N);
-	
+
 	float w_rama = 1.0;
 	float w_hydrophobic = 0.5;
 	float w_electrostatic = 0.2;
@@ -547,9 +547,11 @@ float energy(char* s, int N, VECTOR phi, VECTOR psi){
 
 void simulated_annealing(char* s, int N, VECTOR phi, VECTOR psi, float T0, float alpha, float k){
 
+	
 	float E = energy(s,N,phi,psi);
 	float T = T0;
 	int t = 0;
+	printf("SA: t > %i - ENERGIA> %f - DELTA-E > NA\n", t, E);
 
 	while (T>0){
 		int i = (int) (random()*N);
@@ -561,7 +563,9 @@ void simulated_annealing(char* s, int N, VECTOR phi, VECTOR psi, float T0, float
 
 		float new_energy = energy(s,N,phi,psi);
 		float deltaE = new_energy - E;
+		printf("SA: t > %i - ENERGIA> %f - DELTA-E > %f \n", t, E, deltaE);
 		if(deltaE<= 0){
+			printf("SA: t>%i - Accettazione nuova configurazione per indice %i [dE <= 0] \n", t,i);
 			E = new_energy;
 		}else{
 
@@ -569,54 +573,24 @@ void simulated_annealing(char* s, int N, VECTOR phi, VECTOR psi, float T0, float
 			float P = exp(sp);
 			float r = random();
 			if(r<= P){
+				printf("SA: t>%i - Accettazione nuova configurazione per indice %i [r <= P] \n", t,i);
 				E = energy(s,N,phi,psi);
 			}else{
+				printf("SA: t>%i -Rifiuto nuova configurazione per indice %i \n",t,i);
 				phi[i]-= dphi;
 				psi[i]-= dpsi;
+				
 			}
+			
 		}
+		printf("\n ------------------ \n");
 		t++;
 		T = T0 - sqrt(alpha*t);
 	}
+	
 	printf("SA: Energia = %f\n", E);
 	return;
 }
-
-
-	for(int i=0; i < N; i++){
-		phi[i] = ((float)rand()/RAND_MAX)* 2 * M_PI - M_PI;
-		psi[i] = ((float)rand()/RAND_MAX)* 2 * M_PI - M_PI;
-	}
-	float E = energy(s,phi,psi);
-	float T = T0;
-	int t = 0;
-
-	while (T>0){
-		int i = rand() % N;
-		float dphi = ((float)rand()/RAND_MAX)* 2 * M_PI - M_PI;
-		float dpsi = ((float)rand()/RAND_MAX)* 2 * M_PI - M_PI;
-		phi[i]+= dphi;
-		psi[i]+= dpsi;
-
-		float deltaE = energy(s,phi,psi) - E;
-
-		if(deltaE<= 0){
-			E = energy(s,phi,psi)
-		}else{
-			float P = exp(-deltaE/(k*T));
-			if(((float)(rand() / RAND_MAX))<= P){
-				E = energy(s,phi,psi);
-			}else{
-				phi-=dphi;
-				psi-=dpsi;
-			}
-		}
-		t++;
-		T = T0 - sqrt(alpha*t);
-	}
-}return vectors;
-
-
 
 void pst(params* input){
 	simulated_annealing(input->seq, input->N, input->phi, input->psi, input->to,input->alpha, input->k);
@@ -774,7 +748,7 @@ int main(int argc, char** argv) {
 	}
 
 	// COMMENTARE QUESTA RIGA!
-	prova(input);
+	//prova(input);
 	//
 
 	//
