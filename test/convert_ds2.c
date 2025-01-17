@@ -109,10 +109,8 @@ int main(int argc, char** argv) {
     }
 
     for (int i = 0; i < n; i++) {
-        for (int j = 0; j < k; j++) {
-            fprintf(output_file, "%c", data[i * k + j]);
-        }
-        fprintf(output_file, "\n");
+       fprintf(output_file, "%f", data[i]);
+       fprintf(output_file, "\n");
     }
 
     fclose(output_file);
