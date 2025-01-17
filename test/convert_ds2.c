@@ -16,6 +16,18 @@
 
 //----------------------------------------------------------------------
 
+void* get_block(int size, int elements) { 
+	return _mm_malloc(elements*size,16); 
+}
+
+void free_block(void* p) { 
+	_mm_free(p);
+}
+
+MATRIX alloc_matrix(int rows, int cols) {
+	return (MATRIX) get_block(sizeof(type),rows*cols);
+}
+
 int* alloc_int_matrix(int rows, int cols) {
 	return (int*) get_block(sizeof(int),rows*cols);
 }
