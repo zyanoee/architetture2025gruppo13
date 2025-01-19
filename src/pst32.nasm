@@ -142,167 +142,153 @@ prova:
 
 
 backbone:
-    ; Prologo della funzione
-    push    ebp
-    mov     ebp, esp
-    sub     esp, 32  ; Alloca spazio per variabili locali
+   ; ------------------------------------------------------------
+		; Sequenza di ingresso nella funzione
+		; ------------------------------------------------------------
+		push		ebp		; salva il Base Pointer
+		mov		ebp, esp	; il Base Pointer punta al Record di Attivazione corrente
+		push		ebx		; salva i registri da preservare
+		push		esi
+		push		edi
+		; ------------------------------------------------------------
+		; legge i parametri dal Record di Attivazione corrente
+		; ------------------------------------------------------------
 
-    ; Salva i registri da preservare
-    push    ebx
-    push    esi
-    push    edi
+		; elaborazione
 
-    ; Carica i parametri
-    mov     eax, [ebp + 8]   ; eax = s (char*)
+    ; Carica i parametris
+    mov     eax, [ebp + 8]   ; eax = N (int)
     mov     ebx, [ebp + 12]  ; ebx = phi (VECTOR)
     mov     ecx, [ebp + 16]  ; ecx = psi (VECTOR)
+    mov     edx, [ebp + 20]  ; edx = coords (MATRIX)
 
-    ; Calcola la lunghezza della stringa s
-    mov     edi, eax
-    xor     eax, eax
-    cld
-    repne scasb
-    not     ecx
-    dec     ecx
-    mov     [esp], ecx  ; N = strlen(s)
-
-    ; Alloca la matrice coords
-    mov     eax, ecx
-    imul    eax, 3
-    push    eax
-    push    3
-    call    alloc_matrix
-    add     esp, 8
-    mov     esi, eax  ; esi = coords
+    xorps xmm0, xmm0
+    xorps xmm1, xmm1
+    xorps xmm2, xmm2
+    xorps xmm3, xmm3
 
     ; Inizializza le costanti
-    movss   xmm0, dword [dist0]
-    movss   xmm1, dword [dist1]
-    movss   xmm2, dword [dist2]
-    movss   xmm3, dword [angle_cnca]
+    movss   xmm0, [dist0]
+    movss   xmm1, [dist1]
+    movss   xmm2, [dist2]
+    movss   xmm3, [angle_cnca]
 
-    ; Inizializza il primo N
-    mov     dword [esi], 0
-    mov     dword [esi + 4], 0
-    mov     dword [esi + 8], 0
+    ; Inizializziamo degli indici
+    xor edi, edi ;i=0
+  
+    ; Inizializza il primo N e il primo CA
+    movaps xmm4, [edx+edi*4]
+    xorps xmm4, xmm4
+    movaps [edx+edi*4], xmm4
+    add edi, 4
+    movaps xmm4, [edx+edi*4]
+    addps xmm4, xmm0
+    movaps [edx+edi*4], xmm4
 
-    ; Alloca il vettore tmp
-    push    3
-    call    alloc_vector
-    add     esp, 4
-    mov     edi, eax  ; edi = tmp
+    push 4
+    call alloc_vector
+    add esp, 4
+    mov esi, eax
 
+    movaps xmm5, [esi]
+    xorps xmm5, xmm5 ;XMM5 = TMP
+    mov eax, [ebp + 8] ; EAX = N
+    
     ; Loop principale
-    xor     eax, eax  ; i = 0
+    xor     edi, edi  ; i = 0
 .loop_start:
-    cmp     eax, [esp]
+    test     edi, eax
     jge     .loop_end
 
-    imul    edx, eax, 3
-    mov     ebp, edx  ; idx = i * 3
-
     ; Se i > 0
-    test    eax, eax
+    cmp    edi, edi
     jz      .next_iteration
 
-    ; Calcola tmp per N
-    mov     ecx, ebp
-    sub     ecx, 3
-    movss   xmm4, dword [esi + ecx * 4]
-    movss   xmm5, dword [esi + ecx * 4 + 4]
-    movss   xmm6, dword [esi + ecx * 4 + 8]
-    sub     ecx, 3
-    subss   xmm4, dword [esi + ecx * 4]
-    subss   xmm5, dword [esi + ecx * 4 + 4]
-    subss   xmm6, dword [esi + ecx * 4 + 8]
-    movss   dword [edi], xmm4
-    movss   dword [edi + 4], xmm5
-    movss   dword [edi + 8], xmm6
+    ; CALCOLA N
+    movaps xmm5, [edx+edi*4 - 16]
+    subps xmm5, [edx+edi*4 - 32]
+    movaps [esi], xmm5
+    
+    push esi
+    push dword [angle_cnca]
+    call rotation
+    add esp, 8
+    
+    xorps xmm5, xmm5
+    insertps xmm5, xmm2, 0x10
+    push esi
+    push eax
+    call matrix_product
+    add esp, 8
 
-    ; Chiama la funzione rotation
-    push    dword [angle_cnca]
-    push    edi
-    call    rotation
-    add     esp, 8
-    mov     ebx, eax  ; ebx = R
+    xorps xmm5, xmm5
+    movaps xmm5, [edx+edi*4 - 16]
+    xorps xmm6, xmm6
+    movaps xmm6, [eax]
+    addps xmm5, xmm6
+    movaps [edx+edi*4], xmm5
+    xorps xmm5, xmm5
 
-    ; Calcola tmp per CA
-    movss   xmm4, dword [dist2]
-    movss   dword [edi + 4], xmm4
-    movss   dword [edi], xmm0
-    movss   dword [edi + 8], xmm0
+    ; CALCOLA CA
+    movaps xmm5, [edx+edi*4]
+    subps xmm5, [edx+edi*4 - 16]
+    movaps [esi], xmm5
+    mov eax, [ebx + edi * 4]
+    
+    push esi
+    push eax
+    call rotation
+    add esp, 8
+    
+    xorps xmm5, xmm5
+    insertps xmm5, xmm0, 0x10
+    push esi
+    push eax
+    call matrix_product
+    add esp, 8
 
-    ; Chiama la funzione matrix_product
-    push    ebx
-    push    edi
-    call    matrix_product
-    add     esp, 8
-    mov     ebx, eax  ; ebx = neww
+    xorps xmm5, xmm5
+    movaps xmm5, [edx+edi*4]
+    xorps xmm6, xmm6
+    movaps xmm6, [eax]
+    addps xmm5, xmm6
+    movaps [edx+edi*4 + 16], xmm5
 
-    ; Aggiorna coords per N
-    movss   xmm4, dword [esi + ecx * 4]
-    movss   xmm5, dword [esi + ecx * 4 + 4]
-    movss   xmm6, dword [esi + ecx * 4 + 8]
-    addss   xmm4, dword [ebx]
-    addss   xmm5, dword [ebx + 4]
-    addss   xmm6, dword [ebx + 8]
-    movss   dword [esi + ebp * 4], xmm4
-    movss   dword [esi + ebp * 4 + 4], xmm5
-    movss   dword [esi + ebp * 4 + 8], xmm6
+.next_iteration
+    ; CALCOLA C 
+    movaps xmm5, [edx+edi*4 + 16]
+    subps xmm5, [edx+edi*4 ]
+    movaps [esi], xmm5
+    mov eax, [ecx + edi * 4]
+    
+    push esi
+    push eax
+    call rotation
+    add esp, 8
+    
+    xorps xmm5, xmm5
+    insertps xmm5, xmm1, 0x10
+    push esi
+    push eax
+    call matrix_product
+    add esp, 8
 
-    ; Calcola tmp per CA
-    movss   xmm4, dword [esi + ebp * 4]
-    movss   xmm5, dword [esi + ebp * 4 + 4]
-    movss   xmm6, dword [esi + ebp * 4 + 8]
-    subss   xmm4, dword [esi + ecx * 4]
-    subss   xmm5, dword [esi + ecx * 4 + 4]
-    subss   xmm6, dword [esi + ecx * 4 + 8]
-    movss   dword [edi], xmm4
-    movss   dword [edi + 4], xmm5
-    movss   dword [edi + 8], xmm6
+    xorps xmm5, xmm5
+    movaps xmm5, [edx+edi*4 + 16]
+    xorps xmm6, xmm6
+    movaps xmm6, [eax]
+    addps xmm5, xmm6
+    movaps [edx+edi*4 + 32], xmm5
 
-    ; Chiama la funzione rotation
-    push    dword [phi + eax * 4]
-    push    edi
-    call    rotation
-    add     esp, 8
-    mov     ebx, eax  ; ebx = R
+    inc edi
+    mov eax, [ebp + 8]
+    jmp .loop_start
+.loop_end
+    fremem esi
 
-    ; Calcola tmp per CA
-    movss   xmm4, dword [dist0]
-    movss   dword [edi + 4], xmm4
-    movss   dword [edi], xmm0
-    movss   dword [edi + 8], xmm0
-
-    ; Chiama la funzione matrix_product
-    push    ebx
-    push    edi
-    call    matrix_product
-    add     esp, 8
-    mov     ebx, eax  ; ebx = neww
-
-    ; Aggiorna coords per CA
-    movss   xmm4, dword [esi + ebp * 4]
-    movss   xmm5, dword [esi + ebp * 4 + 4]
-    movss   xmm6, dword [esi + ebp * 4 + 8]
-    addss   xmm4, dword [ebx]
-    addss   xmm5, dword [ebx + 4]
-    addss   xmm6, dword [ebx + 8]
-    movss   dword [esi + (ebp + 3) * 4], xmm4
-    movss   dword [esi + (ebp + 3) * 4 + 4], xmm5
-    movss   dword [esi + (ebp + 3) * 4 + 8], xmm6
-
-.next_iteration:
-    inc     eax
-    jmp     .loop_start
-
-.loop_end:
-    ; Ripristina i registri da preservare
-    pop     edi
-    pop     esi
-    pop     ebx
-
-    ; Epilogo della funzione
-    mov     esp, ebp
-    pop     ebp
-    ret
+    pop	edi		; ripristina i registri da preservare
+    pop	esi
+    pop	ebx
+    mov	esp, ebp	; ripristina lo Stack Pointer
+    pop	ebp		; ripristina il Base Pointer
+    ret			; torna alla funzione C chiamante

@@ -349,10 +349,11 @@ MATRIX rotation(VECTOR axis, float theta){
 }
 
 VECTOR matrix_product(VECTOR v, MATRIX m){
-	VECTOR res = alloc_vector(3);
-	res[0] = v[0]*m[0] + v[1]*m[3] + v[2]*m[6];
-	res[1] = v[0]*m[1] + v[1]*m[4] + v[2]*m[7];
-	res[2] = v[0]*m[2] + v[1]*m[5] + v[2]*m[8];
+	VECTOR res = alloc_vector(4);
+	res[0] = v[0]*m[0] + v[1]*m[4] + v[2]*m[8];
+	res[1] = v[0]*m[1] + v[1]*m[5] + v[2]*m[9];
+	res[2] = v[0]*m[2] + v[1]*m[6] + v[2]*m[10];
+	res[3] = 0;
 
 	return res;
 }
@@ -369,26 +370,27 @@ float min(float a, float b){
 
 MATRIX backbone(char* s, VECTOR phi, VECTOR psi){
 	int N = (int)strlen(s);
-	MATRIX coords = alloc_matrix(N*3,3);
+	MATRIX coords = alloc_matrix(N*3,4);
 
 
 	float dist0=1.46; //rcan
 	float dist1=1.52; //rcac
 	float dist2=1.33; //rcn
-	
 	float angle_cnca = 2.124;
 
 	//Primo N
 	coords[0] = 0;
 	coords[1] = 0;
 	coords[2] = 0;
+	coords[3] = 0; //PADDING PER SSE
 
 	//Primo CA
-	coords[3] = dist0;
-	coords[4] = 0;
+	coords[4] = dist0;
 	coords[5] = 0;
+	coords[6] = 0;
+	coords[7] = 0; //PADDING PER SSE
 
-	VECTOR tmp = alloc_vector(3);
+	VECTOR tmp = alloc_vector(4);
 	for(int i = 0; i<N; i++){
 		int idx = i*3;
 		MATRIX R;
@@ -396,44 +398,53 @@ MATRIX backbone(char* s, VECTOR phi, VECTOR psi){
 		if(i>0){
 
 			//N
-			tmp[0] = coords[3*(idx-1)] - coords[3*(idx-2)];
-			tmp[1] = coords[3*(idx-1)+1] - coords[3*(idx-2)+1];
-			tmp[2] = coords[3*(idx-1)+2] - coords[3*(idx-2)+2];
+			tmp[0] = coords[4*(idx-1)] - coords[4*(idx-2)];
+			tmp[1] = coords[4*(idx-1)+1] - coords[4*(idx-2)+1];
+			tmp[2] = coords[4*(idx-1)+2] - coords[4*(idx-2)+2];
+			tmp[3] = 0;
 			R = rotation(tmp, angle_cnca);
 			tmp[0] = 0;
 			tmp[1]= dist2;
 			tmp[2]= 0;
+			tmp[3]= 0;
 			neww = matrix_product(tmp, R);
-			coords[idx*3]=coords[(idx-1)*3]+neww[0];
-			coords[idx*3+1]=coords[(idx-1)*3+1]+neww[1];
-			coords[idx*3+2]=coords[(idx-1)*3+2]+neww[2];
+			coords[idx*4]=coords[(idx-1)*4]+neww[0];
+			coords[idx*4+1]=coords[(idx-1)*4+1]+neww[1];
+			coords[idx*4+2]=coords[(idx-1)*4+2]+neww[2];
+			coords[idx*4+3]=0; //PADDING PER SSE
 
 			//CA
-			tmp[0] = coords[idx*3] - coords[3*(idx-1)];
-			tmp[1] = coords[idx*3+1] - coords[3*(idx-1)+1];
-			tmp[2] = coords[idx*3+2] - coords[3*(idx-1)+2];
+			tmp[0] = coords[idx*4] - coords[4*(idx-1)];
+			tmp[1] = coords[idx*4+1] - coords[4*(idx-1)+1];
+			tmp[2] = coords[idx*4+2] - coords[4*(idx-1)+2];
+			tmp[3] = 0;
 			R = rotation(tmp, phi[i]);
 			tmp[0] = 0;
 			tmp[1]= dist0;
 			tmp[2]= 0;
+			tmp[3]= 0;
 			neww = matrix_product(tmp, R);
-			coords[3*(idx+1)]=coords[3*idx]+neww[0];
-			coords[3*(idx+1)+1]=coords[3*idx+1]+neww[1];
-			coords[3*(idx+1)+2]=coords[3*idx+2]+neww[2];
+			coords[4*(idx+1)]=coords[4*idx]+neww[0];
+			coords[4*(idx+1)+1]=coords[4*idx+1]+neww[1];
+			coords[4*(idx+1)+2]=coords[4*idx+2]+neww[2];
+			coords[4*(idx+1)+3]=0; //PADDING PER SSE
 		}	
 
 		//C
-		tmp[0] = coords[3*(idx+1)] - coords[3*(idx)];
-		tmp[1] = coords[3*(idx+1)+1] - coords[3*(idx)+1];
-		tmp[2] = coords[3*(idx+1)+2] - coords[3*(idx)+2];
+		tmp[0] = coords[4*(idx+1)] - coords[4*(idx)];
+		tmp[1] = coords[4*(idx+1)+1] - coords[4*(idx)+1];
+		tmp[2] = coords[4*(idx+1)+2] - coords[4*(idx)+2];
+		tmp[3] = 0;
 		R = rotation(tmp, psi[i]);
 		tmp[0] = 0;
 		tmp[1]= dist1;
 		tmp[2]= 0;
+		tmp[3]= 0;
 		neww = matrix_product(tmp, R);
-		coords[3*(idx+2)]=coords[3*(idx+1)]+neww[0];
-		coords[3*(idx+2)+1]=coords[3*(idx+1)+1]+neww[1];
-		coords[3*(idx+2)+2]=coords[3*(idx+1)+2]+neww[2];
+		coords[4*(idx+2)]=coords[4*(idx+1)]+neww[0];
+		coords[4*(idx+2)+1]=coords[4*(idx+1)+1]+neww[1];
+		coords[4*(idx+2)+2]=coords[4*(idx+1)+2]+neww[2];
+		coords[4*(idx+2)+3]=0; 
 
 	}
 	dealloc_vector(tmp);
@@ -446,18 +457,19 @@ MATRIX c_alpha_coords(MATRIX coords, int N){
 	MATRIX c_alpha_coords = alloc_matrix(N,3);
 	for(int i=0; i<N; i++){
 		int inx = i*9;
-		int idx = i*3;
-		c_alpha_coords[idx] = coords[inx+3];
-		c_alpha_coords[idx+1] = coords[inx+4];
-		c_alpha_coords[idx+2] = coords[inx+5];
+		int idx = i*4;
+		c_alpha_coords[idx] = coords[inx+4];
+		c_alpha_coords[idx+1] = coords[inx+5];
+		c_alpha_coords[idx+2] = coords[inx+6];
+		c_alpha_coords[idx+3] = coords[inx+7];
 	}
 	
 	return c_alpha_coords;
 }
 
 float distance(int i, int j, MATRIX coords){
-	int real_i = i*3;
-	int real_j = j*3;
+	int real_i = i*4;
+	int real_j = j*4;
 	return sqrt(pow(coords[real_j]-coords[real_i], 2) +
 				pow(coords[real_j+1]-coords[real_i+1], 2) +
 				pow(coords[real_j+2]-coords[real_i+2], 2)
