@@ -30,6 +30,10 @@
 %include "sseutils32.nasm"
 
 section .data			; Sezione contenente dati inizializzati
+	dist0 dd 1.46
+	dist1 dd 1.52
+	dist2 dd 1.33
+	angle_cnca dd 2.124
 
 section .bss			; Sezione contenente dati non inizializzati
 	alignb 16
@@ -79,6 +83,7 @@ extern free_block
 ; ------------------------------------------------------------
 
 global prova
+global backbone
 
 input		equ		8
 
@@ -134,3 +139,170 @@ prova:
 		pop	ebp		; ripristina il Base Pointer
 		ret			; torna alla funzione C chiamante
 
+
+
+backbone:
+    ; Prologo della funzione
+    push    ebp
+    mov     ebp, esp
+    sub     esp, 32  ; Alloca spazio per variabili locali
+
+    ; Salva i registri da preservare
+    push    ebx
+    push    esi
+    push    edi
+
+    ; Carica i parametri
+    mov     eax, [ebp + 8]   ; eax = s (char*)
+    mov     ebx, [ebp + 12]  ; ebx = phi (VECTOR)
+    mov     ecx, [ebp + 16]  ; ecx = psi (VECTOR)
+
+    ; Calcola la lunghezza della stringa s
+    mov     edi, eax
+    xor     eax, eax
+    cld
+    repne scasb
+    not     ecx
+    dec     ecx
+    mov     [esp], ecx  ; N = strlen(s)
+
+    ; Alloca la matrice coords
+    mov     eax, ecx
+    imul    eax, 3
+    push    eax
+    push    3
+    call    alloc_matrix
+    add     esp, 8
+    mov     esi, eax  ; esi = coords
+
+    ; Inizializza le costanti
+    movss   xmm0, dword [dist0]
+    movss   xmm1, dword [dist1]
+    movss   xmm2, dword [dist2]
+    movss   xmm3, dword [angle_cnca]
+
+    ; Inizializza il primo N
+    mov     dword [esi], 0
+    mov     dword [esi + 4], 0
+    mov     dword [esi + 8], 0
+
+    ; Alloca il vettore tmp
+    push    3
+    call    alloc_vector
+    add     esp, 4
+    mov     edi, eax  ; edi = tmp
+
+    ; Loop principale
+    xor     eax, eax  ; i = 0
+.loop_start:
+    cmp     eax, [esp]
+    jge     .loop_end
+
+    imul    edx, eax, 3
+    mov     ebp, edx  ; idx = i * 3
+
+    ; Se i > 0
+    test    eax, eax
+    jz      .next_iteration
+
+    ; Calcola tmp per N
+    mov     ecx, ebp
+    sub     ecx, 3
+    movss   xmm4, dword [esi + ecx * 4]
+    movss   xmm5, dword [esi + ecx * 4 + 4]
+    movss   xmm6, dword [esi + ecx * 4 + 8]
+    sub     ecx, 3
+    subss   xmm4, dword [esi + ecx * 4]
+    subss   xmm5, dword [esi + ecx * 4 + 4]
+    subss   xmm6, dword [esi + ecx * 4 + 8]
+    movss   dword [edi], xmm4
+    movss   dword [edi + 4], xmm5
+    movss   dword [edi + 8], xmm6
+
+    ; Chiama la funzione rotation
+    push    dword [angle_cnca]
+    push    edi
+    call    rotation
+    add     esp, 8
+    mov     ebx, eax  ; ebx = R
+
+    ; Calcola tmp per CA
+    movss   xmm4, dword [dist2]
+    movss   dword [edi + 4], xmm4
+    movss   dword [edi], xmm0
+    movss   dword [edi + 8], xmm0
+
+    ; Chiama la funzione matrix_product
+    push    ebx
+    push    edi
+    call    matrix_product
+    add     esp, 8
+    mov     ebx, eax  ; ebx = neww
+
+    ; Aggiorna coords per N
+    movss   xmm4, dword [esi + ecx * 4]
+    movss   xmm5, dword [esi + ecx * 4 + 4]
+    movss   xmm6, dword [esi + ecx * 4 + 8]
+    addss   xmm4, dword [ebx]
+    addss   xmm5, dword [ebx + 4]
+    addss   xmm6, dword [ebx + 8]
+    movss   dword [esi + ebp * 4], xmm4
+    movss   dword [esi + ebp * 4 + 4], xmm5
+    movss   dword [esi + ebp * 4 + 8], xmm6
+
+    ; Calcola tmp per CA
+    movss   xmm4, dword [esi + ebp * 4]
+    movss   xmm5, dword [esi + ebp * 4 + 4]
+    movss   xmm6, dword [esi + ebp * 4 + 8]
+    subss   xmm4, dword [esi + ecx * 4]
+    subss   xmm5, dword [esi + ecx * 4 + 4]
+    subss   xmm6, dword [esi + ecx * 4 + 8]
+    movss   dword [edi], xmm4
+    movss   dword [edi + 4], xmm5
+    movss   dword [edi + 8], xmm6
+
+    ; Chiama la funzione rotation
+    push    dword [phi + eax * 4]
+    push    edi
+    call    rotation
+    add     esp, 8
+    mov     ebx, eax  ; ebx = R
+
+    ; Calcola tmp per CA
+    movss   xmm4, dword [dist0]
+    movss   dword [edi + 4], xmm4
+    movss   dword [edi], xmm0
+    movss   dword [edi + 8], xmm0
+
+    ; Chiama la funzione matrix_product
+    push    ebx
+    push    edi
+    call    matrix_product
+    add     esp, 8
+    mov     ebx, eax  ; ebx = neww
+
+    ; Aggiorna coords per CA
+    movss   xmm4, dword [esi + ebp * 4]
+    movss   xmm5, dword [esi + ebp * 4 + 4]
+    movss   xmm6, dword [esi + ebp * 4 + 8]
+    addss   xmm4, dword [ebx]
+    addss   xmm5, dword [ebx + 4]
+    addss   xmm6, dword [ebx + 8]
+    movss   dword [esi + (ebp + 3) * 4], xmm4
+    movss   dword [esi + (ebp + 3) * 4 + 4], xmm5
+    movss   dword [esi + (ebp + 3) * 4 + 8], xmm6
+
+.next_iteration:
+    inc     eax
+    jmp     .loop_start
+
+.loop_end:
+    ; Ripristina i registri da preservare
+    pop     edi
+    pop     esi
+    pop     ebx
+
+    ; Epilogo della funzione
+    mov     esp, ebp
+    pop     ebp
+    ret
