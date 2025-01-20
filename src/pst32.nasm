@@ -34,6 +34,8 @@ section .data			; Sezione contenente dati inizializzati
 	dist1 dd 1.52
 	dist2 dd 1.33
 	angle_cnca dd 2.124
+	alignment_error_msg db "Errore nell'allineamento\n"
+	passed_msg db "Pass!\n"
 
 section .bss			; Sezione contenente dati non inizializzati
 	alignb 16
@@ -62,6 +64,9 @@ section .text			; Sezione contenente il codice macchina
 
 extern get_block
 extern free_block
+extern alloc_vector
+extern rotation
+extern matrix_product
 
 %macro	getmem	2
 	mov	eax, %1
@@ -83,7 +88,6 @@ extern free_block
 ; ------------------------------------------------------------
 
 global prova
-global backbone
 
 input		equ		8
 
@@ -140,9 +144,10 @@ prova:
 		ret			; torna alla funzione C chiamante
 
 
-
-backbone:
-   ; ------------------------------------------------------------
+global backbone_asm
+align 16
+backbone_asm:
+        ; ------------------------------------------------------------
 		; Sequenza di ingresso nella funzione
 		; ------------------------------------------------------------
 		push		ebp		; salva il Base Pointer
@@ -156,139 +161,173 @@ backbone:
 
 		; elaborazione
 
-    ; Carica i parametris
-    mov     eax, [ebp + 8]   ; eax = N (int)
-    mov     ebx, [ebp + 12]  ; ebx = phi (VECTOR)
-    mov     ecx, [ebp + 16]  ; ecx = psi (VECTOR)
-    mov     edx, [ebp + 20]  ; edx = coords (MATRIX)
+        ; Carica i parametris
+        mov     eax, [ebp + 8]   ; eax = N (int)
+        mov     ebx, [ebp + 12]  ; ebx = phi (VECTOR)
+        mov     ecx, [ebp + 16]  ; ecx = psi (VECTOR)
+        mov     edx, [ebp + 20]  ; edx = coords (MATRIX)
 
-    xorps xmm0, xmm0
-    xorps xmm1, xmm1
-    xorps xmm2, xmm2
-    xorps xmm3, xmm3
 
-    ; Inizializza le costanti
-    movss   xmm0, [dist0]
-    movss   xmm1, [dist1]
-    movss   xmm2, [dist2]
-    movss   xmm3, [angle_cnca]
+        xorps xmm0, xmm0
+        xorps xmm1, xmm1
+        xorps xmm2, xmm2
+        xorps xmm3, xmm3
 
-    ; Inizializziamo degli indici
-    xor edi, edi ;i=0
-  
-    ; Inizializza il primo N e il primo CA
-    movaps xmm4, [edx+edi*4]
-    xorps xmm4, xmm4
-    movaps [edx+edi*4], xmm4
-    add edi, 4
-    movaps xmm4, [edx+edi*4]
-    addps xmm4, xmm0
-    movaps [edx+edi*4], xmm4
+        int3
 
-    push 4
-    call alloc_vector
-    add esp, 4
-    mov esi, eax
+        test edx, 0xF
+        jnz .alignment_error
 
-    movaps xmm5, [esi]
-    xorps xmm5, xmm5 ;XMM5 = TMP
-    mov eax, [ebp + 8] ; EAX = N
-    
-    ; Loop principale
-    xor     edi, edi  ; i = 0
-.loop_start:
-    test     edi, eax
-    jge     .loop_end
+        int3
 
-    ; Se i > 0
-    cmp    edi, edi
-    jz      .next_iteration
+        ; Inizializza le costanti
+        movss   xmm0, [dist0]
+        movss   xmm1, [dist1]
+        movss   xmm2, [dist2]
+        movss   xmm3, [angle_cnca]
 
-    ; CALCOLA N
-    movaps xmm5, [edx+edi*4 - 16]
-    subps xmm5, [edx+edi*4 - 32]
-    movaps [esi], xmm5
-    
-    push esi
-    push dword [angle_cnca]
-    call rotation
-    add esp, 8
-    
-    xorps xmm5, xmm5
-    insertps xmm5, xmm2, 0x10
-    push esi
-    push eax
-    call matrix_product
-    add esp, 8
 
-    xorps xmm5, xmm5
-    movaps xmm5, [edx+edi*4 - 16]
-    xorps xmm6, xmm6
-    movaps xmm6, [eax]
-    addps xmm5, xmm6
-    movaps [edx+edi*4], xmm5
-    xorps xmm5, xmm5
+        ; Inizializziamo degli indici
+        xor edi, edi ;i=0
 
-    ; CALCOLA CA
-    movaps xmm5, [edx+edi*4]
-    subps xmm5, [edx+edi*4 - 16]
-    movaps [esi], xmm5
-    mov eax, [ebx + edi * 4]
-    
-    push esi
-    push eax
-    call rotation
-    add esp, 8
-    
-    xorps xmm5, xmm5
-    insertps xmm5, xmm0, 0x10
-    push esi
-    push eax
-    call matrix_product
-    add esp, 8
+        int3
+        xorps xmm4, xmm4
+        int3
+        movaps [edx+edi*4], xmm4
+        int3
+        add edi, 4
+        addps xmm4, xmm0
+        movaps [edx+edi*4], xmm4
 
-    xorps xmm5, xmm5
-    movaps xmm5, [edx+edi*4]
-    xorps xmm6, xmm6
-    movaps xmm6, [eax]
-    addps xmm5, xmm6
-    movaps [edx+edi*4 + 16], xmm5
+        push 4
+        call alloc_vector
+        add esp, 4
+        mov esi, eax
 
-.next_iteration
-    ; CALCOLA C 
-    movaps xmm5, [edx+edi*4 + 16]
-    subps xmm5, [edx+edi*4 ]
-    movaps [esi], xmm5
-    mov eax, [ecx + edi * 4]
-    
-    push esi
-    push eax
-    call rotation
-    add esp, 8
-    
-    xorps xmm5, xmm5
-    insertps xmm5, xmm1, 0x10
-    push esi
-    push eax
-    call matrix_product
-    add esp, 8
+        push ecx
 
-    xorps xmm5, xmm5
-    movaps xmm5, [edx+edi*4 + 16]
-    xorps xmm6, xmm6
-    movaps xmm6, [eax]
-    addps xmm5, xmm6
-    movaps [edx+edi*4 + 32], xmm5
+        mov eax, [ebp + 8] ; EAX = N
+        mov ecx, eax
+        shl eax,2
+        add eax, ecx
 
-    inc edi
-    mov eax, [ebp + 8]
-    jmp .loop_start
-.loop_end
-    fremem esi
+        pop ecx
 
-    pop	edi		; ripristina i registri da preservare
-    pop	esi
-    pop	ebx
-    mov	esp, ebp	; ripristina lo Stack Pointer
-    pop	ebp		; ripristina il Base Pointer
-    ret			; torna alla funzione C chiamante
+        ; Loop principale
+        xor     edi, edi  ; i = 0
+    .loop_start:
+
+        cmp     edi, eax
+        jge     .loop_end
+
+        ; Se i > 0
+        test    edi, edi
+        jz      .next_iteration
+
+        push eax
+
+        ; CALCOLA N
+        movaps xmm5, [edx + edi*4 + 16]
+        subps xmm5, [edx + edi*4]
+        movaps [esi], xmm5
+
+        push esi
+        push dword [angle_cnca]
+        call rotation
+        add esp, 8
+
+        xorps xmm5, xmm5
+        insertps xmm5, xmm2, 0x10
+        movaps [esi], xmm5
+
+        push esi
+        push eax
+        call matrix_product
+        add esp, 8
+
+        xorps xmm5, xmm5
+        movaps xmm5, [edx+edi*4 + 16]
+        xorps xmm6, xmm6
+        movaps xmm6, [eax]
+        addps xmm5, xmm6
+        movaps [edx+edi*4 + 32], xmm5
+        xorps xmm5, xmm5
+        add edi, 4
+
+        ; CALCOLA CA
+        movaps xmm5, [edx+edi*4+16]
+        subps xmm5, [edx+edi*4]
+        movaps [esi], xmm5
+        mov eax, [ebx + edi]
+
+        push esi
+        push eax
+        call rotation
+        add esp, 8
+
+        xorps xmm5, xmm5
+        insertps xmm5, xmm0, 0x10
+        movaps [esi], xmm5
+
+        push esi
+        push eax
+        call matrix_product
+        add esp, 8
+
+        xorps xmm5, xmm5
+        movaps xmm5, [edx+edi*4+16]
+        xorps xmm6, xmm6
+        movaps xmm6, [eax]
+        addps xmm5, xmm6
+        movaps [edx+edi*4 + 32], xmm5
+        add edi, 4
+
+    .next_iteration:
+        ; CALCOLA C
+        movaps xmm5, [edx+edi*4 + 16]
+        movaps xmm6, [edx+edi*4]
+        subps xmm5, xmm6
+        movaps [esi], xmm5
+        mov eax, [ecx + edi]
+
+        push esi
+        push eax
+        call rotation
+        add esp, 8
+
+        xorps xmm5, xmm5
+        insertps xmm5, xmm1, 0x10
+        movaps [esi], xmm5
+        push esi
+        push eax
+        call matrix_product
+        add esp, 8
+
+        xorps xmm5, xmm5
+        movaps xmm5, [edx+edi*4 + 16]
+        xorps xmm6, xmm6
+        movaps xmm6, [eax]
+        addps xmm5, xmm6
+        movaps [edx+edi*4 + 32], xmm5
+
+        add edi, 4
+        pop eax
+        jmp .loop_start
+    .loop_end:
+        fremem esi
+
+        pop	edi		; ripristina i registri da preservare
+        pop	esi
+        pop	ebx
+        mov	esp, ebp	; ripristina lo Stack Pointer
+        pop	ebp		; ripristina il Base Pointer
+        ret			; torna alla funzione C chiamante
+    .alignment_error:
+
+        prints alignment_error_msg
+        pop	edi		; ripristina i registri da preservare
+        pop	esi
+        pop	ebx
+        mov	esp, ebp	; ripristina lo Stack Pointer
+        pop	ebp		; ripristina il Base Pointer
+        ret			; torna alla funzione C chiamante

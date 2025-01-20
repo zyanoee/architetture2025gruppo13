@@ -41,6 +41,8 @@
 
 #include <stdlib.h>
 
+#include <stdint.h>
+
 #include <stdio.h>
 #include <math.h>
 #include <string.h>
@@ -288,6 +290,7 @@ void gen_rnd_mat(VECTOR v, int N){
 
 // PROCEDURE ASSEMBLY
 extern void prova(params* input);
+extern void backbone_asm(int N, VECTOR phi, VECTOR psi, MATRIX coords);
 
 // PROCEDURE IN C
 	//TRIGONOMETRICHE
@@ -350,9 +353,9 @@ MATRIX rotation(VECTOR axis, float theta){
 
 VECTOR matrix_product(VECTOR v, MATRIX m){
 	VECTOR res = alloc_vector(4);
-	res[0] = v[0]*m[0] + v[1]*m[4] + v[2]*m[8];
-	res[1] = v[0]*m[1] + v[1]*m[5] + v[2]*m[9];
-	res[2] = v[0]*m[2] + v[1]*m[6] + v[2]*m[10];
+	res[0] = v[0]*m[0] + v[1]*m[3] + v[2]*m[6];
+	res[1] = v[0]*m[1] + v[1]*m[4] + v[2]*m[7];
+	res[2] = v[0]*m[2] + v[1]*m[5] + v[2]*m[8];
 	res[3] = 0;
 
 	return res;
@@ -371,6 +374,7 @@ float min(float a, float b){
 MATRIX backbone(char* s, VECTOR phi, VECTOR psi){
 	int N = (int)strlen(s);
 	MATRIX coords = alloc_matrix(N*3,4);
+
 
 
 	float dist0=1.46; //rcan
@@ -454,9 +458,9 @@ MATRIX backbone(char* s, VECTOR phi, VECTOR psi){
 }
 
 MATRIX c_alpha_coords(MATRIX coords, int N){
-	MATRIX c_alpha_coords = alloc_matrix(N,3);
+	MATRIX c_alpha_coords = alloc_matrix(N,4);
 	for(int i=0; i<N; i++){
-		int inx = i*9;
+		int inx = i*12;
 		int idx = i*4;
 		c_alpha_coords[idx] = coords[inx+4];
 		c_alpha_coords[idx+1] = coords[inx+5];
@@ -472,7 +476,8 @@ float distance(int i, int j, MATRIX coords){
 	int real_j = j*4;
 	return sqrt(pow(coords[real_j]-coords[real_i], 2) +
 				pow(coords[real_j+1]-coords[real_i+1], 2) +
-				pow(coords[real_j+2]-coords[real_i+2], 2)
+				pow(coords[real_j+2]-coords[real_i+2], 2) +
+				pow(coords[real_j+3] -coords[real_i+3], 2)
 	);
 }
 
@@ -535,7 +540,30 @@ float packing_energy(char* s, MATRIX c_alpha_coords, int N){
 }
 
 float energy(char* s, int N, VECTOR phi, VECTOR psi){
-	MATRIX coords = backbone(s, phi, psi);
+
+	MATRIX coords = alloc_matrix(N*3,4);
+	if((uintptr_t) coords % 16 != 0){
+		printf("Coords non è allineato");
+		return -1;
+	}
+	backbone_asm(N, phi, psi, coords);
+
+
+
+	/*
+	FILE* file = fopen("output.txt", "r");
+	if(file == NULL) {
+		for(int i=0;i<N*3*4;i++){
+			fprintf(file, "%f\n", coords[i]);
+		}
+		fclose(file);
+	}
+	*/
+
+
+
+
+	//MATRIX coords = backbone(s, phi, psi);
 	MATRIX c_alpha = c_alpha_coords(coords, N);
 
 	float rama = rama_energy(phi, psi, N);
@@ -555,7 +583,7 @@ float energy(char* s, int N, VECTOR phi, VECTOR psi){
 }
 
 void simulated_annealing(char* s, int N, VECTOR phi, VECTOR psi, float T0, float alpha, float k){
-
+	printf("Simulated Annealing start...");
 	
 	float E = energy(s,N,phi,psi);
 	float T = T0;
