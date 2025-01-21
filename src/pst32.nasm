@@ -11,8 +11,8 @@
 ;     NASM (www.nasm.us)
 ;     GCC (gcc.gnu.org)
 ;
-; entrambi sono disponibili come pacchetti software 
-; installabili mediante il packaging tool del sistema 
+; entrambi sono disponibili come pacchetti software
+; installabili mediante il packaging tool del sistema
 ; operativo; per esempio, su Ubuntu, mediante i comandi:
 ;
 ;     sudo apt-get install nasm
@@ -25,7 +25,7 @@
 ;
 ; Per generare file oggetto:
 ;
-;     nasm -f elf32 fss32.nasm 
+;     nasm -f elf32 fss32.nasm
 ;
 %include "sseutils32.nasm"
 
@@ -33,7 +33,11 @@ section .data			; Sezione contenente dati inizializzati
 	dist0 dd 1.46
 	dist1 dd 1.52
 	dist2 dd 1.33
+	val dd 1.0
 	angle_cnca dd 2.124
+	counter dd 0
+	alignment_error_msg db "Errore nell'allineamento\n"
+	passed_msg db "Pass!\n"
 
 section .bss			; Sezione contenente dati non inizializzati
 	alignb 16
@@ -62,6 +66,10 @@ section .text			; Sezione contenente il codice macchina
 
 extern get_block
 extern free_block
+extern alloc_vector
+extern alloc_matrix
+extern rotation
+extern matrix_product
 
 %macro	getmem	2
 	mov	eax, %1
@@ -83,7 +91,6 @@ extern free_block
 ; ------------------------------------------------------------
 
 global prova
-global backbone
 
 input		equ		8
 
@@ -106,7 +113,7 @@ prova:
 		; ------------------------------------------------------------
 
 		; elaborazione
-		
+
 		; esempio: stampa input->e
 		mov EAX, [EBP+input]	; indirizzo della struttura contenente i parametri
         ; [EAX]      input->seq; 			// sequenza
@@ -124,9 +131,9 @@ prova:
 		; [EAX + 48] input->dispaly;
 		; [EAX + 52] input->silent;
 		MOVSS XMM0, [EAX+44]
-		MOVSS [e], XMM0 
-		prints msg            
-		printss e   
+		MOVSS [e], XMM0
+		prints msg
+		printss e
 		prints nl
 		; ------------------------------------------------------------
 		; Sequenza di uscita dalla funzione
@@ -139,12 +146,10 @@ prova:
 		pop	ebp		; ripristina il Base Pointer
 		ret			; torna alla funzione C chiamante
 
-
-
 global backbone_asm
 align 16
 backbone_asm:
-        ; ------------------------------------------------------------
+   ; ------------------------------------------------------------
 		; Sequenza di ingresso nella funzione
 		; ------------------------------------------------------------
 		push		ebp		; salva il Base Pointer
@@ -371,8 +376,9 @@ backbone_asm:
     pop     ebp
     ret
 
-
-distance:
+global distance_asm
+align 16
+distance_asm:
     push		ebp		; salva il Base Pointer
     mov		ebp, esp	; il Base Pointer punta al Record di Attivazione corrente
     push		ebx		; salva i registri da preservare
@@ -396,9 +402,8 @@ distance:
 
     sqrtss xmm1, xmm1         ; sqrt(xmm1)
     movd eax, xmm1            ; eax = sqrt(xmm1)          
-            ; ripristina lo spazio dello stack
-	
-    pop edi
+          
+    pop edi                   ; ripristina i registri da preservare
     pop esi
     pop ebx
     pop ebp
