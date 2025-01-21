@@ -11,8 +11,8 @@
 ;     NASM (www.nasm.us)
 ;     GCC (gcc.gnu.org)
 ;
-; entrambi sono disponibili come pacchetti software 
-; installabili mediante il packaging tool del sistema 
+; entrambi sono disponibili come pacchetti software
+; installabili mediante il packaging tool del sistema
 ; operativo; per esempio, su Ubuntu, mediante i comandi:
 ;
 ;     sudo apt-get install nasm
@@ -25,7 +25,7 @@
 ;
 ; Per generare file oggetto:
 ;
-;     nasm -f elf32 fss32.nasm 
+;     nasm -f elf32 fss32.nasm
 ;
 %include "sseutils32.nasm"
 
@@ -33,7 +33,9 @@ section .data			; Sezione contenente dati inizializzati
 	dist0 dd 1.46
 	dist1 dd 1.52
 	dist2 dd 1.33
+	val dd 1.0
 	angle_cnca dd 2.124
+	counter dd 0
 	alignment_error_msg db "Errore nell'allineamento\n"
 	passed_msg db "Pass!\n"
 
@@ -65,6 +67,7 @@ section .text			; Sezione contenente il codice macchina
 extern get_block
 extern free_block
 extern alloc_vector
+extern alloc_matrix
 extern rotation
 extern matrix_product
 
@@ -110,7 +113,7 @@ prova:
 		; ------------------------------------------------------------
 
 		; elaborazione
-		
+
 		; esempio: stampa input->e
 		mov EAX, [EBP+input]	; indirizzo della struttura contenente i parametri
         ; [EAX]      input->seq; 			// sequenza
@@ -128,9 +131,9 @@ prova:
 		; [EAX + 48] input->dispaly;
 		; [EAX + 52] input->silent;
 		MOVSS XMM0, [EAX+44]
-		MOVSS [e], XMM0 
-		prints msg            
-		printss e   
+		MOVSS [e], XMM0
+		prints msg
+		printss e
 		prints nl
 		; ------------------------------------------------------------
 		; Sequenza di uscita dalla funzione
@@ -142,7 +145,6 @@ prova:
 		mov	esp, ebp	; ripristina lo Stack Pointer
 		pop	ebp		; ripristina il Base Pointer
 		ret			; torna alla funzione C chiamante
-
 
 global backbone_asm
 align 16
@@ -161,173 +163,215 @@ backbone_asm:
 
 		; elaborazione
 
-        ; Carica i parametris
-        mov     eax, [ebp + 8]   ; eax = N (int)
-        mov     ebx, [ebp + 12]  ; ebx = phi (VECTOR)
-        mov     ecx, [ebp + 16]  ; ecx = psi (VECTOR)
-        mov     edx, [ebp + 20]  ; edx = coords (MATRIX)
+    ; Inizializza le costanti
+    movss   xmm0, [dist0]         ; dist0 = 1.46
+    movss   xmm1, [dist1]         ; dist1 = 1.52
+    movss   xmm2, [dist2]         ; dist2 = 1.33
+    movss   xmm3, [angle_cnca]    ; angle_cnca = 2.124
+
+    mov ebx, [ebp + 8]
+
+    ; Alloca memoria per coords
+    push    ebx
+    imul    ebx, 3
 
 
-        xorps xmm0, xmm0
-        xorps xmm1, xmm1
-        xorps xmm2, xmm2
-        xorps xmm3, xmm3
+    push    ebx
+    push    4                   ; Dimensione di ogni elemento (4 float)
+    call    alloc_matrix
+    add     esp, 8
+    mov     esi, eax            ; coords = alloc_matrix(N*3, 4)
 
-        int3
+    push 4
+    call alloc_matrix
+    add esp, 4
+    mov ecx, eax
+    pop ebx
 
-        test edx, 0xF
-        jnz .alignment_error
+    ; Imposta i primi valori di coords
+    xorps   xmm4, xmm4
+    movaps  [esi], xmm4         ; coords[0] = dist0, coords[1] = 0, coords[2] = 0, coords[3] = 0 (Padding)
+    addps  xmm4, xmm0          ; xmm4 = dist0
+    movaps  [esi + 16], xmm4    ; coords[4] = dist0, coords[5] = 0, coords[6] = 0, coords[7] = 0 (Padding)
 
-        int3
+    ; Prepara il ciclo per i calcoli
+    xor     edi, edi            ; i = 0
 
-        ; Inizializza le costanti
-        movss   xmm0, [dist0]
-        movss   xmm1, [dist1]
-        movss   xmm2, [dist2]
-        movss   xmm3, [angle_cnca]
+.loop:
+    ; Calcola idx
+    mov     edx, edi
+    imul    edx, 12      ; idx = i * 12
+
+    ; Salta il calcolo di N e CA per la prima iterazione
+    cmp     edi, 0
+    je      .skip_c
+
+    ; Calcola N (tmp[0..3] = coords[4*(idx-1)] - coords[4*(idx-2)])
+
+    movaps  xmm5, [esi + edx*4 - 16]
+    movaps  xmm6, [esi + edx*4 - 32]
+    subps    xmm5, xmm6
+    movaps  [ecx], xmm5         ; tmp = coords[4*(idx-1)] - coords[4*(idx-2)]
 
 
-        ; Inizializziamo degli indici
-        xor edi, edi ;i=0
 
-        int3
-        xorps xmm4, xmm4
-        int3
-        movaps [edx+edi*4], xmm4
-        int3
-        add edi, 4
-        addps xmm4, xmm0
-        movaps [edx+edi*4], xmm4
+    push ecx
 
-        push 4
-        call alloc_vector
-        add esp, 4
-        mov esi, eax
+    movd eax, xmm3 ; Ruota tmp con angle_cnca
 
-        push ecx
+    push    eax
+    push    ecx
+    call    rotation
+    add     esp, 8
 
-        mov eax, [ebp + 8] ; EAX = N
-        mov ecx, eax
-        shl eax,2
-        add eax, ecx
+    pop ecx
 
-        pop ecx
 
-        ; Loop principale
-        xor     edi, edi  ; i = 0
-    .loop_start:
+    push eax
 
-        cmp     edi, eax
-        jge     .loop_end
+    ; Crea nuovo vettore (tmp e dist2)
+    xorps   xmm5, xmm5
+    insertps xmm5, xmm2, 0x10         ; dist2
+    movaps  [ecx], xmm5
 
-        ; Se i > 0
-        test    edi, edi
-        jz      .next_iteration
+    pop eax
+    push ecx
 
-        push eax
 
-        ; CALCOLA N
-        movaps xmm5, [edx + edi*4 + 16]
-        subps xmm5, [edx + edi*4]
-        movaps [esi], xmm5
 
-        push esi
-        push dword [angle_cnca]
-        call rotation
-        add esp, 8
+    push eax
+    push ecx
+    call matrix_product
+    add esp, 8
 
-        xorps xmm5, xmm5
-        insertps xmm5, xmm2, 0x10
-        movaps [esi], xmm5
+    pop ecx
+    push eax
 
-        push esi
-        push eax
-        call matrix_product
-        add esp, 8
 
-        xorps xmm5, xmm5
-        movaps xmm5, [edx+edi*4 + 16]
-        xorps xmm6, xmm6
-        movaps xmm6, [eax]
-        addps xmm5, xmm6
-        movaps [edx+edi*4 + 32], xmm5
-        xorps xmm5, xmm5
-        add edi, 4
+    mov     edx, edi
+    imul    edx, 12
+    pop eax
+    movaps xmm5, [eax]
+    movaps xmm4, [esi + edx*4 - 16]
+    addps xmm4, xmm5
+    movaps [esi + edx*4], xmm4
 
-        ; CALCOLA CA
-        movaps xmm5, [edx+edi*4+16]
-        subps xmm5, [edx+edi*4]
-        movaps [esi], xmm5
-        mov eax, [ebx + edi]
 
-        push esi
-        push eax
-        call rotation
-        add esp, 8
 
-        xorps xmm5, xmm5
-        insertps xmm5, xmm0, 0x10
-        movaps [esi], xmm5
+    ; Calcola CA (tmp[0..3] = coords[4*(idx+1)] - coords[4*(idx)])
+    movaps  xmm5, [esi + edx*4]
+    movaps  xmm6, [esi + edx*4 - 16]
+    subps    xmm5, xmm6
+    movaps  [ecx], xmm5
 
-        push esi
-        push eax
-        call matrix_product
-        add esp, 8
 
-        xorps xmm5, xmm5
-        movaps xmm5, [edx+edi*4+16]
-        xorps xmm6, xmm6
-        movaps xmm6, [eax]
-        addps xmm5, xmm6
-        movaps [edx+edi*4 + 32], xmm5
-        add edi, 4
+    ; Ruota tmp con phi[i]
 
-    .next_iteration:
-        ; CALCOLA C
-        movaps xmm5, [edx+edi*4 + 16]
-        movaps xmm6, [edx+edi*4]
-        subps xmm5, xmm6
-        movaps [esi], xmm5
-        mov eax, [ecx + edi]
+    mov eax, [ebp+12]
+    mov eax, [eax+edi*4]
 
-        push esi
-        push eax
-        call rotation
-        add esp, 8
+    push ecx
 
-        xorps xmm5, xmm5
-        insertps xmm5, xmm1, 0x10
-        movaps [esi], xmm5
-        push esi
-        push eax
-        call matrix_product
-        add esp, 8
+    push    eax
+    push    ecx     ; phi[i]
+    call    rotation
+    add     esp, 8
 
-        xorps xmm5, xmm5
-        movaps xmm5, [edx+edi*4 + 16]
-        xorps xmm6, xmm6
-        movaps xmm6, [eax]
-        addps xmm5, xmm6
-        movaps [edx+edi*4 + 32], xmm5
 
-        add edi, 4
-        pop eax
-        jmp .loop_start
-    .loop_end:
-        fremem esi
+    pop ecx
+    push eax
 
-        pop	edi		; ripristina i registri da preservare
-        pop	esi
-        pop	ebx
-        mov	esp, ebp	; ripristina lo Stack Pointer
-        pop	ebp		; ripristina il Base Pointer
-        ret			; torna alla funzione C chiamante
-    .alignment_error:
+    ; Crea nuovo vettore (tmp e dist0)
+    xorps xmm5, xmm5
+    insertps  xmm5, xmm0, 0x10          ; dist0
+    movaps  [ecx], xmm5
 
-        prints alignment_error_msg
-        pop	edi		; ripristina i registri da preservare
-        pop	esi
-        pop	ebx
-        mov	esp, ebp	; ripristina lo Stack Pointer
-        pop	ebp		; ripristina il Base Pointer
-        ret			; torna alla funzione C chiamante
+
+    pop eax
+    push ecx
+
+    push eax
+    push ecx
+    call matrix_product
+    add esp,8
+
+    pop ecx
+
+    push eax
+
+    mov     edx, edi
+    imul    edx, 12
+
+    pop eax
+
+    movaps xmm5, [eax]
+    movaps xmm4, [esi + edx*4]
+    addps xmm5, xmm4
+
+    movaps  [esi + edx*4 + 16], xmm5 ; Assegna risultato in coords[idx+1]
+
+.skip_c:
+
+    ; Calcola C (tmp[0..3] = coords[4*(idx+2)] - coords[4*(idx+1)])
+    movaps  xmm5, [esi + edx*4 + 16]
+    movaps  xmm6, [esi + edx*4]
+    subps    xmm5, xmm6
+    movaps  [ecx], xmm5
+
+    ; Ruota tmp con psi[i]
+
+    mov eax, [ebp+16]
+    mov eax, [eax+edi*4]
+
+
+    push ecx
+
+    push    eax
+    push    ecx       ; psi[i]
+    call    rotation
+    add     esp, 8
+
+
+    pop ecx
+
+
+    ; Crea nuovo vettore (tmp e dist0)
+    xorps xmm5, xmm5
+    insertps  xmm5, xmm1, 0x10          ; dist1
+    movaps  [ecx], xmm5
+
+
+
+    push ecx
+
+    push eax
+    push ecx
+    call matrix_product
+    add esp,8
+
+    pop ecx
+
+    mov     edx, edi
+    imul    edx, 12
+
+    movaps xmm5, [eax]
+    movaps xmm4, [esi + edx*4 + 16]
+    addps xmm5, xmm4
+
+    movaps  [esi + edx*4 + 32], xmm5 ; Assegna risultato in coords[idx+1]
+
+    ; Incrementa i registri e continua il ciclo
+    add     edi, 1
+    cmp     edi, ebx
+    jl      .loop
+
+    ; Fine ciclo
+    ; Dealloca memoria e ripristina i registri
+    fremem ecx
+    mov eax, esi
+    pop     edi
+    pop     esi
+    pop     ebx
+    mov     esp, ebp
+    pop     ebp
+    ret

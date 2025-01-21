@@ -290,7 +290,7 @@ void gen_rnd_mat(VECTOR v, int N){
 
 // PROCEDURE ASSEMBLY
 extern void prova(params* input);
-extern void backbone_asm(int N, VECTOR phi, VECTOR psi, MATRIX coords);
+extern MATRIX backbone_asm(int N, VECTOR phi, VECTOR psi);
 
 // PROCEDURE IN C
 	//TRIGONOMETRICHE
@@ -371,10 +371,9 @@ float min(float a, float b){
 	return b;
 }
 
-MATRIX backbone(char* s, VECTOR phi, VECTOR psi){
-	int N = (int)strlen(s);
-	MATRIX coords = alloc_matrix(N*3,4);
+MATRIX backbone(int N, VECTOR phi, VECTOR psi){
 
+	MATRIX coords = alloc_matrix(N*3,4);
 
 
 	float dist0=1.46; //rcan
@@ -452,9 +451,7 @@ MATRIX backbone(char* s, VECTOR phi, VECTOR psi){
 
 	}
 	dealloc_vector(tmp);
-
 	return coords;
-
 }
 
 MATRIX c_alpha_coords(MATRIX coords, int N){
@@ -541,29 +538,8 @@ float packing_energy(char* s, MATRIX c_alpha_coords, int N){
 
 float energy(char* s, int N, VECTOR phi, VECTOR psi){
 
-	MATRIX coords = alloc_matrix(N*3,4);
-	if((uintptr_t) coords % 16 != 0){
-		printf("Coords non è allineato");
-		return -1;
-	}
-	backbone_asm(N, phi, psi, coords);
-
-
-
-	/*
-	FILE* file = fopen("output.txt", "r");
-	if(file == NULL) {
-		for(int i=0;i<N*3*4;i++){
-			fprintf(file, "%f\n", coords[i]);
-		}
-		fclose(file);
-	}
-	*/
-
-
-
-
-	//MATRIX coords = backbone(s, phi, psi);
+	MATRIX coords = backbone(N, phi, psi);
+	//MATRIX coords = (MATRIX) backbone_asm(N, phi, psi);
 	MATRIX c_alpha = c_alpha_coords(coords, N);
 
 	float rama = rama_energy(phi, psi, N);
@@ -584,7 +560,6 @@ float energy(char* s, int N, VECTOR phi, VECTOR psi){
 
 void simulated_annealing(char* s, int N, VECTOR phi, VECTOR psi, float T0, float alpha, float k){
 	printf("Simulated Annealing start...");
-	
 	float E = energy(s,N,phi,psi);
 	float T = T0;
 	int t = 0;
@@ -626,6 +601,7 @@ void simulated_annealing(char* s, int N, VECTOR phi, VECTOR psi, float T0, float
 	}
 	
 	printf("SA: Energia = %f\n", E);
+
 	return;
 }
 
