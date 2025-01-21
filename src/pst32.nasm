@@ -190,7 +190,7 @@ backbone_asm:
 
     ; Imposta i primi valori di coords
     xorps   xmm4, xmm4
-    movaps  [esi], xmm4         ; coords[0] = dist0, coords[1] = 0, coords[2] = 0, coords[3] = 0 (Padding)
+    movaps  [esi], xmm4         ; coords[0] = 0, coords[1] = 0, coords[2] = 0, coords[3] = 0 (Padding)
     addps  xmm4, xmm0          ; xmm4 = dist0
     movaps  [esi + 16], xmm4    ; coords[4] = dist0, coords[5] = 0, coords[6] = 0, coords[7] = 0 (Padding)
 
