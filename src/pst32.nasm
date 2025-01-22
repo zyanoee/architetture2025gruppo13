@@ -393,20 +393,33 @@ distance_asm:
 
     mov esi, [ebp + 16]       ; esi = c_alpha_coords
 
+
+
     movaps xmm0, [esi+edx*4] ; coords[i]
     movaps xmm1, [esi+edi*4] ; coord[j]
     subps xmm1, xmm0         ; xmm1 = coords[j] - coords[i]
 
+
+    mulps xmm1, xmm1
+
+
     haddps xmm1, xmm1         ; somma parziale
     haddps xmm1, xmm1         ; somma totale
 
+
     sqrtss xmm1, xmm1         ; sqrt(xmm1)
-    movd eax, xmm1            ; eax = sqrt(xmm1)          
-          
+    movd eax, xmm1            ; eax = sqrt(xmm1)
+
+    push eax
+    fld dword [esp]
+    add esp, 4
+
+
     pop edi                   ; ripristina i registri da preservare
     pop esi
     pop ebx
     pop ebp
+
     ret
 
 
