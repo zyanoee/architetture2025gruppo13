@@ -149,7 +149,7 @@ prova:
 global backbone_asm
 align 16
 backbone_asm:
-        ; ------------------------------------------------------------
+   ; ------------------------------------------------------------
 		; Sequenza di ingresso nella funzione
 		; ------------------------------------------------------------
 		push		ebp		; salva il Base Pointer
@@ -375,3 +375,52 @@ backbone_asm:
     mov     esp, ebp
     pop     ebp
     ret
+
+global distance_asm
+align 16
+distance_asm:
+    push		ebp		; salva il Base Pointer
+    mov		ebp, esp	; il Base Pointer punta al Record di Attivazione corrente
+    push		ebx		; salva i registri da preservare
+    push		esi
+    push		edi
+
+    mov edx, [ebp + 8]        ; edx = i
+    mov edi, [ebp + 12]       ; edi = j
+
+    shl edx, 2                ; edx = i * 4
+    shl edi, 2                ; edi = j * 4 
+
+    mov esi, [ebp + 16]       ; esi = c_alpha_coords
+
+
+
+    movaps xmm0, [esi+edx*4] ; coords[i]
+    movaps xmm1, [esi+edi*4] ; coord[j]
+    subps xmm1, xmm0         ; xmm1 = coords[j] - coords[i]
+
+
+    mulps xmm1, xmm1
+
+
+    haddps xmm1, xmm1         ; somma parziale
+    haddps xmm1, xmm1         ; somma totale
+
+
+    sqrtss xmm1, xmm1         ; sqrt(xmm1)
+    movd eax, xmm1            ; eax = sqrt(xmm1)
+
+    push eax
+    fld dword [esp]
+    add esp, 4
+
+
+    pop edi                   ; ripristina i registri da preservare
+    pop esi
+    pop ebx
+    pop ebp
+
+    ret
+
+
+

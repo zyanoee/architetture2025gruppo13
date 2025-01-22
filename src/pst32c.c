@@ -291,6 +291,7 @@ void gen_rnd_mat(VECTOR v, int N){
 // PROCEDURE ASSEMBLY
 extern void prova(params* input);
 extern MATRIX backbone_asm(int N, VECTOR phi, VECTOR psi);
+extern type distance_asm(int i, int j, MATRIX coords);
 
 // PROCEDURE IN C
 	//TRIGONOMETRICHE
@@ -497,7 +498,7 @@ float hydrophobic_energy(char* s, MATRIX c_alpha_coords, int N){
 	float energy = 0;
 	for(int i = 0; i<N; i++){
 		for(int j = i+1; j<N; j++ ){
-			float dist = distance(i,j, c_alpha_coords);
+			float dist = (float)distance_asm(i,j, c_alpha_coords);
 			if( dist < 10.0){
 				energy = energy + (hydrophobicity[s[i]-'A']*hydrophobicity[s[j]-'A'])/dist;
 			}
@@ -510,7 +511,7 @@ float electrostatic_energy(char* s, MATRIX c_alpha_coords, int N){
 	float energy = 0;
 	for(int i = 0; i<N; i++){
 		for(int j = i+1; j<N; j++ ){
-			float dist = distance(i,j, c_alpha_coords);
+			float dist = (float)distance_asm(i,j, c_alpha_coords);
 			if( dist < 10.0 && charge[s[i]-'A'] != 0 && charge[s[j]-'A'] != 0){
 				energy = energy + (charge[s[i]-'A']*charge[s[j]-'A'])/(dist*4);
 			}
@@ -524,7 +525,7 @@ float packing_energy(char* s, MATRIX c_alpha_coords, int N){
 	for(int i = 0; i<N; i++){
 		float density = 0;
 		for(int j = 0; j<N; j++ ){
-			float dist = distance(i,j, c_alpha_coords);
+			float dist = (float)distance_asm(i,j, c_alpha_coords);
 			if(i!=j && dist < 10.0){
 				float d = (volume[s[j]-'A']/(dist*dist*dist));
 				density = density + d;
@@ -538,8 +539,8 @@ float packing_energy(char* s, MATRIX c_alpha_coords, int N){
 
 float energy(char* s, int N, VECTOR phi, VECTOR psi){
 
-	MATRIX coords = backbone(N, phi, psi);
-	//MATRIX coords = (MATRIX) backbone_asm(N, phi, psi);
+	//MATRIX coords = backbone(N, phi, psi);
+	MATRIX coords = (MATRIX) backbone_asm(N, phi, psi);
 	MATRIX c_alpha = c_alpha_coords(coords, N);
 
 	float rama = rama_energy(phi, psi, N);
