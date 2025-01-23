@@ -12,8 +12,8 @@
 ;     GCC (gcc.gnu.org)
 ;
 ; entrambi sono disponibili come pacchetti software 
-; installabili mediante il packaging tool del sistema 
-; operativo; per esempio, su Ubuntu, mediante i comandi:
+; installabili mr9ante il packaging tool del sistema
+; operativo; per esempio, su Ubuntu, mr9ante i comandi:
 ;
 ;     sudo apt-get install nasm
 ;     sudo apt-get install gcc
@@ -31,6 +31,11 @@
 %include "sseutils64.nasm"
 
 section .data			; Sezione contenente dati inizializzati
+	dist0 dq 1.46
+	dist1 dq 1.52
+	dist2 dq 1.33
+	val dq 1.0
+	angle_cnca dq 2.124
 
 section .bss			; Sezione contenente dati non inizializzati
 
@@ -45,20 +50,24 @@ section .text			; Sezione contenente il codice macchina
 ;	getmem	<size>,<elements>
 ;
 ; alloca un'area di memoria di <size>*<elements> bytes
-; (allineata a 16 bytes) e restituisce in EAX
+; (allineata a 16 bytes) e restituisce in    rax
 ; l'indirizzo del primo bytes del blocco allocato
-; (funziona mediante chiamata a funzione C, per cui
+; (funziona mr9ante chiamata a funzione C, per cui
 ; altri registri potrebbero essere modificati)
 ;
 ;	fremem	<address>
 ;
 ; dealloca l'area di memoria che ha inizio dall'indirizzo
 ; <address> precedentemente allocata con getmem
-; (funziona mediante chiamata a funzione C, per cui
+; (funziona mr9ante chiamata a funzione C, per cui
 ; altri registri potrebbero essere modificati)
 
 extern get_block
 extern free_block
+extern alloc_vector
+extern alloc_matrix
+extern rotation
+extern matrix_product
 
 %macro	getmem	2
 	mov	rdi, %1
@@ -124,289 +133,361 @@ prova:
 
 global backbone_asm
 align 32
-backbone_asm:
+backbone_asm: ;int N=rdi, VECTOR phi=rsi, VECTOR psi=rdx
 
-    push		ebp		; salva il Base Pointer
-    mov		ebp, esp	; il Base Pointer punta al Record di Attivazione corrente
-    push		ebx		; salva i registri da preservare
-    push		esi
-    push		edi
+    push		rbp				; salva il Base Pointer
+    mov		rbp, rsp			; il Base Pointer punta al Record di Attivazione corrente
+    pushaq						; salva i registri generali
 
-    movss   ymm0, [dist0]         ; dist0 = 1.46
-    movss   ymm1, [dist1]         ; dist1 = 1.52
-    movss   ymm2, [dist2]         ; dist2 = 1.33
-    movss   ymm3, [angle_cnca]    ; angle_cnca = 2.124
+    vxorpd ymm10, ymm10
+    vxorpd ymm11, ymm11
+    vxorpd ymm12, ymm12
+    vxorpd ymm13, ymm13
 
-    mov ebx, [ebp + 8]
+    vmovq   xmm10, [dist0]         ; dist0 = 1.46
+    vmovq   xmm11, [dist1]         ; dist1 = 1.52
+    vmovq   xmm12, [dist2]         ; dist2 = 1.33
+    vmovq   xmm13, [angle_cnca]    ; angle_cnca = 2.124
+
+    vinsertf128 ymm10, ymm10, xmm10, 0
+    vinsertf128 ymm11, ymm11, xmm11, 0
+    vinsertf128 ymm12, ymm12, xmm12, 0
+    vinsertf128 ymm13, ymm13, xmm13, 0
+
+    mov rbx, rdi
+    mov r11, rsi
+    mov r12, rdx
+
 
     ; Alloca memoria per coords
-    push    ebx
-    imul    ebx, 3
+
+    sub rsp, 8
+    mov [rsp], rbx
+    imul    rbx, 3
 
 
-    push    ebx
-    push    4                   
+    mov rdi, rbx
+    mov rsi,   4
     call    alloc_matrix
-    add     esp, 8
-    mov     esi, eax            
+    mov     r10, rax
 
-    push 4
+    mov rdi, 4
     call alloc_matrix
-    add esp, 4
-    mov ecx, eax
-    pop ebx
+    mov rcx, rax
+
+    mov rbx, [rsp]
+    add rsp, 8
+
 
     ; Imposta i primi valori di coords
-    xorps   ymm4, ymm4
-    vmovapd  [esi], ymm4         ; coords[0] = 0, coords[1] = 0, coords[2] = 0, coords[3] = 0 (Padding)
-	addps  ymm4, ymm0          ; xmm4 = dist0
-    vmovapd  [esi + 32], ymm4    ; coords[4] = dist0, coords[5] = 0, coords[6] = 0, coords[7] = 0 (Padding)
+    vxorpd   ymm4, ymm4
+    vmovapd  [r10], ymm4         ; coords[0] = 0, coords[1] = 0, coords[2] = 0, coords[3] = 0 (Padding)
+	vaddpd  ymm4, ymm10          ; xmm4 = dist0
+    vmovapd  [r10 + 32], ymm4    ; coords[4] = dist0, coords[5] = 0, coords[6] = 0, coords[7] = 0 (Padding)
 	
 
 	
     ; Prepara il ciclo per i calcoli
-    xor     edi, edi            ; i = 0
+    xor     r9, r9            ; i = 0
 
 .loop:
     ; Calcola idx
-    mov     edx, edi
-    imul    edx, 12      ; idx = i * 12
+    mov     r8, r9
+    imul    r8, 12      ; idx = i * 12
 
     ; Salta il calcolo di N e CA per la prima iterazione
-    cmp     edi, 0
+    cmp     r9, 0
     je      .skip_c
 
     ; Calcola N (tmp[0..3] = coords[4*(idx-1)] - coords[4*(idx-2)])
 
-    vmovapd  ymm5, [esi + edx*8 - 32]
-    vmovapd  ymm6, [esi + edx*8 - 64]
+    vmovapd  ymm5, [r10 + r8*8 - 32]
+    vmovapd  ymm6, [r10 + r8*8 - 64]
     vsubpd    ymm5, ymm6
-    vmovapd  [ecx], ymm5         ; tmp = coords[4*(idx-1)] - coords[4*(idx-2)]
+    vmovapd  [rcx], ymm5         ; tmp = coords[4*(idx-1)] - coords[4*(idx-2)]
 
 
 
-    push ecx
+    sub rsp, 8
+    mov [rsp], rcx
+
+    push r8
+    push r9
+    push r10
+    push r11
+    push r12
 
     ; Ruota tmp con angle_cnca
 
-    vextractf128 xmm1, ymm3, 0x0
-    movd eax, xmm1
-    push eax
-    push ecx
+    vextractf128 xmm0, ymm13, 0x0
+    mov rdi, rcx
     call rotation
-    add esp, 8
-    pop ecx
 
+    pop r12
+    pop r11
+    pop r10
+    pop r9
+    pop r8
 
-    push eax
+    mov [rsp], rcx
+    add rsp, 8
+
+    sub rsp, 8
+    mov [rsp],    rax
 
     ; Crea nuovo vettore (tmp e dist2)
     vxorpd   ymm5, ymm5
 
-    vextractf128 xmm7, ymm2, 0x0        
-    movsd xmm7, xmm7                   
-    vshufpd xmm7, xmm7, xmm7, 0x1      
-    vblendpd ymm5, ymm5, xmm7, 0b0010  
+    vextractf128 xmm7, ymm12, 0x0
+    vinsertf128 ymm5, ymm5, xmm7, 0x10
 
-    vmovapd  [ecx], xmm5
+    vmovapd  [rcx], xmm5
 
-    pop eax
-    push ecx
+    mov rax, [rsp]
+    mov [rsp], rcx
 
+    push r8
+    push r9
+    push r10
+    push r11
+    push r12
 
-
-    push eax
-    push ecx
+    mov rsi,    rax
+    mov rdi, rcx
     call matrix_product
-    add esp, 8
 
-    pop ecx
-    push eax
+    pop r12
+    pop r11
+    pop r10
+    pop r9
+    pop r8
+
+    mov rcx, [rsp]
+    mov [rsp], rax
 
 
-    mov     edx, edi
-    imul    edx, 12
-    pop eax
-    vmovapd ymm5, [eax]
-    vmovapd ymm4, [esi + edx*8 - 32]
+    mov     r8, r9
+    imul    r8, 12
+
+
+    mov rax, [rsp]
+    add rsp, 8
+
+    vmovapd ymm5, [rax]
+    vmovapd ymm4, [r10 + r8*8 - 32]
     vaddpd ymm4, ymm5
-    vmovapd [esi + edx*8], ymm4
+    vmovapd [r10 + r8*8], ymm4
 
 
 
     ; Calcola CA (tmp[0..3] = coords[4*(idx+1)] - coords[4*(idx)])
-    vmovapd  ymm5, [esi + edx*8]
-    vmovapd  ymm6, [esi + edx*8 - 32]
+    vmovapd  ymm5, [r10 + r8*8]
+    vmovapd  ymm6, [r10 + r8*8 - 32]
     vsubpd    ymm5, ymm6
-    vmovapd  [ecx], ymm5
+    vmovapd  [rcx], ymm5
 
 
     ; Ruota tmp con phi[i]
 
-    mov eax, [ebp+12]
-    mov eax, [eax+edi*8]
+    mov    rax, [r11]
+    mov    rax, [rax+r9*8]
 
-    push ecx
+    sub rsp, 8
+    mov [rsp], rcx
 
-    push    eax
-    push    ecx     ; phi[i]
+    push r8
+    push r9
+    push r10
+    push r11
+    push r12
+
+
+    mov rsi,    rax
+    mov rdi,    rcx     ; phi[i]
     call    rotation
-    add     esp, 8
+
+    pop r12
+    pop r11
+    pop r10
+    pop r9
+    pop r8
 
 
-    pop ecx
-    push eax
+
+    mov rcx, [rsp]
+    mov [rsp], rax
 
     ; Crea nuovo vettore (tmp e dist0)
     vxorpd ymm5, ymm5
 
-    vextractf128 xmm7, ymm0, 0x0        
-    movsd xmm7, xmm7                   
-    vshufpd xmm7, xmm7, xmm7, 0x1      
-    vblendpd ymm5, ymm5, xmm7, 0b0010  
 
-    vmovapd  [ecx], ymm5
+    vextractf128 xmm7, ymm10, 0x0
+    vinsertf128 ymm5, ymm5, xmm7, 0x10
 
 
-    pop eax
-    push ecx
+    vmovapd  [rcx], ymm5
 
-    push eax
-    push ecx
+
+    mov rax, [rsp]
+    mov [rsp], rcx
+
+    push r8
+    push r9
+    push r10
+    push r11
+    push r12
+
+
+    mov rsi, rax
+    mov rdi, rcx
     call matrix_product
-    add esp,8
 
-    pop ecx
+    pop r12
+    pop r11
+    pop r10
+    pop r8
 
-    push eax
+    mov rcx, [rsp]
+    mov [rsp], rax
 
-    mov     edx, edi
-    imul    edx, 12
+    mov     r8, r9
+    imul    r8, 12
 
-    pop eax
+    mov rax, [rsp]
+    add rsp, 8
 
-    vmovapd ymm5, [eax]
-    vmovapd ymm4, [esi + edx*8]
+    vmovapd ymm5, [   rax]
+    vmovapd ymm4, [r10 + r8*8]
     vaddpd ymm5, ymm4
 
-    vmovapd  [esi + edx*8 + 32], ymm5 ; Assegna risultato in coords[idx+1]
+    vmovapd  [r10 + r8*8 + 32], ymm5 ; Assegna risultato in coords[idx+1]
 
 .skip_c:
 
     ; Calcola C (tmp[0..3] = coords[4*(idx+2)] - coords[4*(idx+1)])
-    vmovapd  ymm5, [esi + edx*8 + 32]
-    vmovapd  ymm6, [esi + edx*8]
+    vmovapd  ymm5, [r10 + r8*8 + 32]
+    vmovapd  ymm6, [r10 + r8*8]
     vsubpd    ymm5, ymm6
-    vmovapd  [ecx], ymm5
+    vmovapd  [rcx], ymm5
 
     ; Ruota tmp con psi[i]
 
-    mov eax, [ebp+16]
-    mov eax, [eax+edi*8]
+    mov    rax, [r12]
+    mov    rax, [rax+r9*8]
 
 
-    push ecx
+    push rcx
+    push r8
+    push r9
+    push r10
+    push r11
+    push r12
 
-    push    eax
-    push    ecx       ; psi[i]
+    push       rax
+    push    rcx       ; psi[i]
     call    rotation
     add     esp, 8
 
-
-    pop ecx
+    pop r12
+    pop r11
+    pop r10
+    pop r9
+    pop r8
+    pop rcx
 
 
     ; Crea nuovo vettore (tmp e dist0)
     vxorpd ymm5, ymm5
 
-    vextractf128 xmm7, ymm1, 0x0        
-    movsd xmm7, xmm7                   
-    vshufpd xmm7, xmm7, xmm7, 0x1      
-    vblendpd ymm5, ymm5, xmm7, 0b0010  
+    vextractf128 xmm7, ymm11, 0x0
+    vinsertf128 ymm5, ymm5, xmm7, 0x10
 
-    vmovapd  [ecx], ymm5
+    vmovapd  [rcx], ymm5
 
 
 
-    push ecx
+    push rcx
+    push r8
+    push r9
+    push r10
+    push r11
+    push r12
 
-    push eax
-    push ecx
+    push    rax
+    push rcx
     call matrix_product
     add esp,8
 
-    pop ecx
+    pop r12
+    pop r11
+    pop r10
+    pop r9
+    pop r8
+    pop rcx
 
-    mov     edx, edi
-    imul    edx, 12
+    mov     r8, r9
+    imul    r8, 12
 
-    vmovapd ymm5, [eax]
-    vmovapd ymm4, [esi + edx*8 + 32]
+    vmovapd ymm5, [rax]
+    vmovapd ymm4, [r10 + r8*8 + 32]
     vaddpd ymm5, ymm4
 
-    vmovapd  [esi + edx*8 + 64], ymm5 ; Assegna risultato in coords[idx+1]
+    vmovapd  [r10 + r8*8 + 64], ymm5 ; Assegna risultato in coords[idx+1]
 
     ; Incrementa i registri e continua il ciclo
-    add     edi, 1
-    cmp     edi, ebx
+    add     r9, 1
+    cmp     r9, rbx
     jl      .loop
 
     ; Fine ciclo
     ; Dealloca memoria e ripristina i registri
-    fremem ecx
-    mov eax, esi
-    pop     edi
-    pop     esi
-    pop     ebx
-    mov     esp, ebp
-    pop     ebp
-    ret
+    fremem rcx
+    mov    rax, r10
+    popaq				; ripristina i registri generali
+    mov		rsp, rbp	; ripristina lo Stack Pointer
+    pop		rbp		    ; ripristina il Base Pointer
+    ret				    ; torna alla funzione C chiamante
 
 
 global distance_asm
 align 32
 distance_asm:
-    push		ebp		; salva il Base Pointer
-    mov		ebp, esp	; il Base Pointer punta al Record di Attivazione corrente
-    push		ebx		; salva i registri da preservare
-    push		esi
-    push		edi
+    push		rbp				; salva il Base Pointer
+    mov		rbp, rsp			; il Base Pointer punta al Record di Attivazione corrente
+    pushaq						; salva i registri generali
 
-    mov edx, [ebp + 8]        ; edx = i
-    mov edi, [ebp + 12]       ; edi = j
+    mov r8, rdi       ; r8 = i
+    mov r9, rsi       ; r9 = j
 
-    shl edx, 2                ; edx = i * 4
-    shl edi, 2                ; edi = j * 4 
+    shl r8, 2                ; r8 = i * 4
+    shl r9, 2                ; r9 = j * 4
 
-    mov esi, [ebp + 16]       ; esi = c_alpha_coords
+    mov r10, rdx      ; r10 = c_alpha_coords
 
 
 
-    vmovapd ymm0, [esi+edx*8] ; coords[i]
-    vmovapd ymm1, [esi+edi*8] ; coord[j]
+    vmovapd ymm0, [r10+r8*8] ; coords[i]
+    vmovapd ymm1, [r10+r9*8] ; coord[j]
     vsubpd ymm1, ymm0         ; xmm1 = coords[j] - coords[i]
 
 
     vmulpd ymm1, ymm1
 
 
-    haddpd ymm1, ymm1         ; somma parziale
-    haddpd ymm1, ymm1         ; somma totale
+    vhaddpd ymm1, ymm1, ymm1         ; somma parziale
+    vhaddpd ymm1, ymm1, ymm1         ; somma totale
 
 
-    sqrtsd ymm1, ymm1         ; sqrt(xmm1)
+    vsqrtpd ymm1, ymm1         ; sqrt(xmm1)
     vextractf128 xmm1, ymm1, 0   ; Estrae la parte inferiore di ymm1 (128 bit) in xmm1
-    movd eax, xmm1               ; Sposta il valore di xmm1 (double) in eax
+    movq    rax, xmm1
+    xorps xmm0, xmm0
+    movq xmm0, rax
 
-    push eax
-    fld dword [esp]
-    add esp, 4
-
-
-    pop edi                   ; ripristina i registri da preservare
-    pop esi
-    pop ebx
-    pop ebp
+    popaq				; ripristina i registri generali
+    mov		rsp, rbp	; ripristina lo Stack Pointer
+    pop		rbp		    ; ripristina il Base Pointer
+    ret				    ; torna alla funzione C chiamante
 
     ret
 

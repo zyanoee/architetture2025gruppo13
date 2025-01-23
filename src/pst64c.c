@@ -576,7 +576,7 @@ void simulated_annealing(char* s, int N, VECTOR phi, VECTOR psi, type T0, type a
 
 		type new_energy = energy(s,N,phi,psi);
 		type deltaE = new_energy - E;
-		printf("SA: t > %i - ENERGIA> %d - DELTA-E > %d \n", t, E, deltaE);
+		printf("SA: t > %i - ENERGIA> %f - DELTA-E > %f \n", t, E, deltaE);
 		if(deltaE<= 0){
 			printf("SA: t>%i - Accettazione nuova configurazione per indice %i [dE <= 0] \n", t,i);
 			E = new_energy;
