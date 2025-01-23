@@ -539,8 +539,8 @@ type packing_energy(char* s, MATRIX c_alpha_coords, int N){
 
 type energy(char* s, int N, VECTOR phi, VECTOR psi){
 
-	//MATRIX coords = backbone(N, phi, psi);
-	MATRIX coords = (MATRIX) backbone_asm(N, phi, psi);
+	MATRIX coords = backbone(N, phi, psi);
+	//MATRIX coords = (MATRIX) backbone_asm(N, phi, psi);
 	MATRIX c_alpha = c_alpha_coords(coords, N);
 
 	type rama = rama_energy(phi, psi, N);

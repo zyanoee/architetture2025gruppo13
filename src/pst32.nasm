@@ -70,6 +70,7 @@ extern alloc_vector
 extern alloc_matrix
 extern rotation
 extern matrix_product
+extern distance
 
 %macro	getmem	2
 	mov	eax, %1
@@ -376,6 +377,8 @@ backbone_asm:
     pop     ebp
     ret
 
+
+
 global distance_asm
 align 16
 distance_asm:
@@ -421,6 +424,78 @@ distance_asm:
     pop ebp
 
     ret
+global packing_energy
+align 16
+packing_energy:   ;;;; char* s = [EBP+8] - MATRIX coords = [EBP+16] - 
+    push    ebp
+    mov     ebp, esp
+    push    ebx
+    push    esi
+    push    edi
 
+    xorps xmm0,xmm0
+    mov ecx,[ebp+16]
+    mov esi,0
+
+outer:
+    cmp     esi, ecx
+    jge     end_outer
+
+    xorps   xmm6,xmm6
+    mov     edi, esi
+    inc     edi
+
+inner:
+    cmp     ebx, [ebp+12]
+    jge     end_inner
+
+    push    edi ;
+    push    esi
+    push    [ebp+12]
+    call    distance; chiamata funzione distance
+    add     esp, 12
+
+    movss   xmm3, [ten]
+    comiss  xmm4,xmm3
+    ja      skip_update
+
+    movzx   edx, byte[ebp+8 + edi]
+    sub     edx, 'A'
+    cmp     edx, 25
+    ja      skip
+
+    movss   xmm7, [volume +edx*4]
+
+    movaps  xmm5, xmm4
+    mulss   xmm5, xmm4          ;xmm5=dist^2
+    mulss   xmm5, xmm4          ;xmm5=dist^3
+    divss   xmm7, xmm5          ;xmm7=volume[s[j]]/dist^3
+
+    addss   xmm6, xmm7
+
+
+skip_inner:
+    inc edi
+    jmp inner
+
+end_inner:
+    movzx eax,byte[ebp+8+esi]
+    sub eax, 'A'
+    cmp eax, 25
+    ja skip_outer
+    movss xmm7,[volume+eax*4]
+    subss xmm7,xmm6
+    mulss xmm7,xmm7
+    addss xmm0, xmm7
+skip_outer:
+    inc esi
+    jmp outer
+end_outer:
+    movss [ebp+8],xmm0
+    pop     edi
+    pop     esi
+    pop     ebx
+    pop     ebp
+    ret
 
 
