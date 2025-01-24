@@ -624,7 +624,6 @@ int main(int argc, char** argv) {
 	char fname_phi[256];
 	char fname_psi[256];
 	char* seqfilename = NULL;
-	clock_t ti;
 	float time;
 	int d;
 	
@@ -780,7 +779,7 @@ int main(int argc, char** argv) {
 	//
 	double ti=omp_get_wtime();
 	pst(input);
-	ti =omp_get_wtine()-ti;
+	ti =omp_get_wtime()-ti;
 	time =((float)ti)/CLOCKS_PER_SEC;
 
 	if(!input->silent)
