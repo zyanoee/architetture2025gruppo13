@@ -503,7 +503,7 @@ type hydrophobic_energy(char* s, MATRIX c_alpha_coords, int N){
 	#pragma omp parallel for reduction(+:energy)
 	for(int i = 0; i<N; i++){
 		for(int j = i+1; j<N; j++ ){
-			type dist = (type)distance_asm(i,j, c_alpha_coords);
+			type dist = (type)distance(i,j, c_alpha_coords);
 			if( dist < 10.0){
 				energy = energy + (hydrophobicity[s[i]-'A']*hydrophobicity[s[j]-'A'])/dist;
 			}
@@ -518,7 +518,7 @@ type electrostatic_energy(char* s, MATRIX c_alpha_coords, int N){
 	#pragma omp parallel for reduction(+:energy)
 	for(int i = 0; i<N; i++){
 		for(int j = i+1; j<N; j++ ){
-			type dist = (type)distance_asm(i,j, c_alpha_coords);
+			type dist = (type)distance(i,j, c_alpha_coords);
 			if( dist < 10.0 && charge[s[i]-'A'] != 0 && charge[s[j]-'A'] != 0){
 				energy = energy + (charge[s[i]-'A']*charge[s[j]-'A'])/(dist*4);
 			}
@@ -535,7 +535,7 @@ type packing_energy(char* s, MATRIX c_alpha_coords, int N){
 		type density = 0;
 
 		for(int j = 0; j<N; j++ ){
-			type dist = (type)distance_asm(i,j, c_alpha_coords);
+			type dist = (type)distance(i,j, c_alpha_coords);
 			if(i!=j && dist < 10.0){
 				type d = (volume[s[j]-'A']/(dist*dist*dist));
 				density = density + d;
@@ -569,12 +569,20 @@ type energy(char* s, int N, VECTOR phi, VECTOR psi){
 	return w_rama*rama + w_hydrophobic*hydrophobic + w_electrostatic*electrostatic + w_packing*packing;
 }
 
-void simulated_annealing(char* s, int N, VECTOR phi, VECTOR psi, type T0, type alpha, type k){
-	printf("Simulated Annealing start...");
+void simulated_annealing(params* input){
+    char* s = input-> seq;
+    int N = input-> N;
+    VECTOR phi = input -> phi;
+    VECTOR psi = input -> psi;
+    type T0 = input->to;
+    type alpha = input->alpha;
+    type k = input->k;
+    
+
 	type E = energy(s,N,phi,psi);
 	type T = T0;
 	int t = 0;
-	printf("SA: t > %i - ENERGIA> %f - DELTA-E > NA\n", t, E);
+
 
 	while (T>0){
 		int i = (int) (random()*N);
@@ -586,9 +594,8 @@ void simulated_annealing(char* s, int N, VECTOR phi, VECTOR psi, type T0, type a
 
 		type new_energy = energy(s,N,phi,psi);
 		type deltaE = new_energy - E;
-		printf("SA: t > %i - ENERGIA> %f - DELTA-E > %f \n", t, E, deltaE);
+
 		if(deltaE<= 0){
-			printf("SA: t>%i - Accettazione nuova configurazione per indice %i [dE <= 0] \n", t,i);
 			E = new_energy;
 		}else{
 
@@ -596,28 +603,27 @@ void simulated_annealing(char* s, int N, VECTOR phi, VECTOR psi, type T0, type a
 			type P = exp(sp);
 			type r = random();
 			if(r<= P){
-				printf("SA: t>%i - Accettazione nuova configurazione per indice %i [r <= P] \n", t,i);
+
 				E = energy(s,N,phi,psi);
 			}else{
-				printf("SA: t>%i -Rifiuto nuova configurazione per indice %i \n",t,i);
+
 				phi[i]-= dphi;
 				psi[i]-= dpsi;
 				
 			}
 			
 		}
-		printf("\n ------------------ \n");
 		t++;
 		T = T0 - sqrt(alpha*t);
 	}
-	
-	printf("SA: Energia = %f\n", E);
+	input->e = E;
+
 
 	return;
 }
 
 void pst(params* input){
-	simulated_annealing(input->seq, input->N, input->phi, input->psi, input->to,input->alpha, input->k);
+	simulated_annealing(input);
 }
 
 int main(int argc, char** argv) {
@@ -780,7 +786,7 @@ int main(int argc, char** argv) {
 	double ti=omp_get_wtime();
 	pst(input);
 	ti =omp_get_wtime()-ti;
-	time =((float)ti)/CLOCKS_PER_SEC;
+	time =(float)ti ;
 
 	if(!input->silent)
 		printf("PST time = %.3f secs\n", time);
