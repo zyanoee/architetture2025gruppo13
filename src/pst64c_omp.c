@@ -487,6 +487,8 @@ type rama_energy(VECTOR phi, VECTOR psi, int N){
 	type beta_phi = -119.0;
 	type beta_psi = 113.0;
 	type energy = 0;
+	
+	#pragma omp parallel for reduction(+:energy)
 	for (int i = 0; i<N; i++){
 		type a_dist = distance_angles(phi[i], psi[i], alpha_phi, alpha_psi);
 		type b_dist = distance_angles(phi[i], psi[i], beta_phi, beta_psi);
@@ -532,7 +534,6 @@ type packing_energy(char* s, MATRIX c_alpha_coords, int N){
 	for(int i = 0; i<N; i++){
 		type density = 0;
 
-		#pragma omp parallel for reduction(+:density)
 		for(int j = 0; j<N; j++ ){
 			type dist = (type)distance_asm(i,j, c_alpha_coords);
 			if(i!=j && dist < 10.0){
