@@ -559,12 +559,20 @@ type energy(char* s, int N, VECTOR phi, VECTOR psi){
 	return w_rama*rama + w_hydrophobic*hydrophobic + w_electrostatic*electrostatic + w_packing*packing;
 }
 
-void simulated_annealing(char* s, int N, VECTOR phi, VECTOR psi, type T0, type alpha, type k){
-	printf("Simulated Annealing start...");
+void simulated_annealing(params* input){
+    char* s = input-> seq;
+    int N = input-> N;
+    VECTOR phi = input -> phi;
+    VECTOR psi = input -> psi;
+    type T0 = input->to;
+    type alpha = input->alpha;
+    type k = input->k;
+    
+
 	type E = energy(s,N,phi,psi);
 	type T = T0;
 	int t = 0;
-	printf("SA: t > %i - ENERGIA> %f - DELTA-E > NA\n", t, E);
+
 
 	while (T>0){
 		int i = (int) (random()*N);
@@ -576,9 +584,8 @@ void simulated_annealing(char* s, int N, VECTOR phi, VECTOR psi, type T0, type a
 
 		type new_energy = energy(s,N,phi,psi);
 		type deltaE = new_energy - E;
-		printf("SA: t > %i - ENERGIA> %f - DELTA-E > %f \n", t, E, deltaE);
+
 		if(deltaE<= 0){
-			printf("SA: t>%i - Accettazione nuova configurazione per indice %i [dE <= 0] \n", t,i);
 			E = new_energy;
 		}else{
 
@@ -586,28 +593,27 @@ void simulated_annealing(char* s, int N, VECTOR phi, VECTOR psi, type T0, type a
 			type P = exp(sp);
 			type r = random();
 			if(r<= P){
-				printf("SA: t>%i - Accettazione nuova configurazione per indice %i [r <= P] \n", t,i);
+
 				E = energy(s,N,phi,psi);
 			}else{
-				printf("SA: t>%i -Rifiuto nuova configurazione per indice %i \n",t,i);
+
 				phi[i]-= dphi;
 				psi[i]-= dpsi;
 				
 			}
 			
 		}
-		printf("\n ------------------ \n");
 		t++;
 		T = T0 - sqrt(alpha*t);
 	}
-	
-	printf("SA: Energia = %f\n", E);
+	input->e = E;
+
 
 	return;
 }
 
 void pst(params* input){
-	simulated_annealing(input->seq, input->N, input->phi, input->psi, input->to,input->alpha, input->k);
+	simulated_annealing(input);
 }
 
 int main(int argc, char** argv) {
@@ -773,11 +779,14 @@ int main(int argc, char** argv) {
 	t = clock() - t;
 	time = ((float)t)/CLOCKS_PER_SEC;
 
-	if(!input->silent)
+	if(!input->silent){
 		printf("PST time = %.3f secs\n", time);
-	else
+        printf("Energy = %f\n", input->e);
+}
+	else{
 		printf("%.3f\n", time);
-
+        printf("%f\n", input->e);
+    }
 	//
 	// Salva il risultato
 	//
