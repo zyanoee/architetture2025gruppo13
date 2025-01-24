@@ -33,11 +33,10 @@ section .data			; Sezione contenente dati inizializzati
 	dist0 dd 1.46
 	dist1 dd 1.52
 	dist2 dd 1.33
-	val dd 1.0
-	angle_cnca dd 2.124
-	counter dd 0
-	alignment_error_msg db "Errore nell'allineamento\n"
-	passed_msg db "Pass!\n"
+    angle_cnca dd 2.124
+	ten dd 10.0
+    temp dd 0.0
+
 
 section .bss			; Sezione contenente dati non inizializzati
 	alignb 16
@@ -70,6 +69,7 @@ extern alloc_vector
 extern alloc_matrix
 extern rotation
 extern matrix_product
+extern distance
 
 %macro	getmem	2
 	mov	eax, %1
@@ -376,6 +376,8 @@ backbone_asm:
     pop     ebp
     ret
 
+
+
 global distance_asm
 align 16
 distance_asm:
@@ -418,9 +420,20 @@ distance_asm:
     pop edi                   ; ripristina i registri da preservare
     pop esi
     pop ebx
+    mov esp, ebp
     pop ebp
 
     ret
+
+
+
+
+
+
+
+
+
+
 
 
 
